@@ -10,7 +10,6 @@
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
-void Error_Handler(void);
 
 static uint8_t data_logger_mode=0;
 static char log_session[24]="unset";

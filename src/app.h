@@ -3,6 +3,10 @@
 
 #include "stm32f4xx_hal.h"
 #include <stdint.h>
+#include "FreeRTOS.h"
+#include "task.h"
+
+void Error_Handler(void);
 
 typedef struct {
     uint32_t tick_ms;
