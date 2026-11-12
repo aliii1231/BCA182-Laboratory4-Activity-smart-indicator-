@@ -37,9 +37,10 @@ The following items still require firmware implementation or hardware-side confi
 ## Build and capture procedure
 
 1. Install PlatformIO Core/VS Code extension and the `ststm32` platform, plus STM32Cube framework packages.
-2. From the repository root run `pio run -e rt_spark_f407`; preserve the complete output as a build log. A successful hardware build cannot be asserted until the custom manifest and framework source integration are validated against the installed PlatformIO version.
-3. Connect the board and use `pio device monitor -b 115200`; board console is USART1 on PA9/PA10 via the onboard ST-LINK virtual COM path. Store genuine output only; do not create synthetic readings.
-4. Record board revision, power source, probe/firmware versions, date/time, sensor units and sample intervals, calibration offsets, and initialization/error states with the capture.
+2. Fetch the pinned official FreeRTOS kernel, including ARM_CM4F and heap_4 sources, by running `powershell -ExecutionPolicy Bypass -File scripts/fetch_freertos.ps1` from the repository root. This requires network access to GitHub.
+3. From the repository root run `pio run -e rt_spark_f407`; preserve the complete output as a build log.
+4. Connect the board and use `pio device monitor -b 115200`; board console is USART1 on PA9/PA10 via the onboard ST-LINK virtual COM path. Store genuine output only; do not create synthetic readings.
+5. Record board revision, power source, probe/firmware versions, date/time, sensor units and sample intervals, calibration offsets, and initialization/error states with the capture.
 
 ## Integration work still required
 
