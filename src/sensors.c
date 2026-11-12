@@ -1,4 +1,6 @@
 #include "app.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "board_pins.h"
 
 extern I2C_HandleTypeDef hi2c2;
@@ -22,7 +24,8 @@ HAL_StatusTypeDef AHT_Read(float *temperature_c, float *humidity_pct)
     uint8_t d[6]; start(); if(!write_byte((uint8_t)(AHT_ADDR|0))) { stop(); return HAL_ERROR; }
     if(!write_byte(0xAC)||!write_byte(0x33)||!write_byte(0x00)){ stop(); return HAL_ERROR; } stop();
     vTaskDelay(pdMS_TO_TICKS(85)); start(); if(!write_byte((uint8_t)(AHT_ADDR|1))){ stop(); return HAL_ERROR; }
-    for(int i=0;i<6;i++) d[i]=read_byte(i<5); stop();
+    for(int i=0;i<6;i++) { d[i]=read_byte(i<5); }
+    stop();
     if(d[0]&0x80u) return HAL_BUSY;
     uint32_t rh=((uint32_t)d[1]<<12)|((uint32_t)d[2]<<4)|(d[3]>>4);
     uint32_t tr=((uint32_t)(d[3]&0x0Fu)<<16)|((uint32_t)d[4]<<8)|d[5];
@@ -36,9 +39,12 @@ static HAL_StatusTypeDef ap_read(uint8_t reg,uint8_t *v){return HAL_I2C_Mem_Read
 HAL_StatusTypeDef AP3216C_Read(uint16_t *ambient,uint16_t *proximity)
 {
     uint8_t als0,als1,ps0,ps1;
-    HAL_StatusTypeDef st=ap_write(0x00,0x04); if(st!=HAL_OK)return st; vTaskDelay(pdMS_TO_TICKS(100));
+    HAL_StatusTypeDef st=ap_write(0x00,0x04); if(st!=HAL_OK)return st;
+    vTaskDelay(pdMS_TO_TICKS(10));
+    st=ap_write(0x00,0x03); if(st!=HAL_OK)return st;
+    vTaskDelay(pdMS_TO_TICKS(120));
     if(ap_read(0x0C,&als0)!=HAL_OK||ap_read(0x0D,&als1)!=HAL_OK||ap_read(0x0E,&ps0)!=HAL_OK||ap_read(0x0F,&ps1)!=HAL_OK)return HAL_ERROR;
-    *ambient=(uint16_t)(((als1&0x3Fu)<<8)|als0); *proximity=(uint16_t)(((ps1&0x3Fu)<<4)|(ps0&0x0Fu)); return HAL_OK;
+    *ambient=(uint16_t)(((uint16_t)als1<<8)|als0); *proximity=(uint16_t)(((ps1&0x3Fu)<<4)|(ps0&0x0Fu)); return HAL_OK;
 }
 
 HAL_StatusTypeDef ICM20608_ReadWhoAmI(uint8_t *whoami)
