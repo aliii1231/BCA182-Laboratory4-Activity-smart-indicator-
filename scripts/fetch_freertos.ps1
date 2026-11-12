@@ -2,7 +2,7 @@ param([string]$Ref = "V11.1.0")
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$target = Join-Path $repoRoot "lib/FreeRTOS"
+$target = Join-Path $repoRoot "lib/FreeRTOS/Source"
 $archive = Join-Path $env:TEMP "freertos-kernel-$Ref.zip"
 $extractRoot = Join-Path $env:TEMP "freertos-kernel-$Ref"
 $url = "https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/$Ref.zip"
