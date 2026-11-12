@@ -1,0 +1,27 @@
+{
+  "build": {
+    "core": "stm32",
+    "cpu": "cortex-m4",
+    "extra_flags": "-DSTM32F407xx",
+    "f_cpu": "168000000L",
+    "mcu": "stm32f407zgt6",
+    "product_line": "STM32F407xx",
+    "variant": "STM32F4xx/F407Z(G-I)T"
+  },
+  "debug": {
+    "default svd": "STM32F40x.svd",
+    "jlink_device": "STM32F407ZG",
+    "openocd_target": "stm32f4x",
+    "svd_path": "STM32F40x.svd"
+  },
+  "frameworks": ["stm32cube"],
+  "name": "RT-Spark STM32F407ZGT6 (custom, pinout unverified)",
+  "upload": {
+    "maximum_ram_size": 196608,
+    "maximum_size": 1048576,
+    "protocol": "stlink",
+    "protocols": ["stlink"]
+  },
+  "url": "https://github.com/aliii1231/BCA182-Laboratory4-Activity-smart-indicator-",
+  "vendor": "RT-Thread / RT-Spark"
+}
