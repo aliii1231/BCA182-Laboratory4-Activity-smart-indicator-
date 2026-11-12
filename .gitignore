@@ -29,3 +29,7 @@ data/raw/
 *.hex
 *.bin
 *.map
+
+# Track the pinned FreeRTOS kernel so fresh clones can build offline.
+!lib/FreeRTOS/
+!lib/FreeRTOS/**
