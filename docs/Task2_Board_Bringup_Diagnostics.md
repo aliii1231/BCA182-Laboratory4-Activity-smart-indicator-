@@ -2,28 +2,43 @@
 
 ## Current scaffold status
 
-The repository has no RT-Spark schematic, verified pin table, board manifest, or hardware inventory. The custom PlatformIO board target reserves the STM32F407ZGT6 memory sizes and ST-LINK protocol, but its clock source, actual ST-LINK wiring/configuration, pinout, and peripheral wiring remain unverified. Firmware is deliberately a startup skeleton and does not initialize peripherals or claim live readings.
+The supplied RT-Spark Spark-1 V1.0 schematic (HW1.1) was reviewed. It identifies an onboard AHT21 (compatible command/data protocol with the lab-requested AHT10), AP3216C, ICM-20608-G, buttons, discrete RGB LEDs, LED matrix, buzzer, ST7789V3 LCD, W25Q128 flash, microSD, RW007 Wi-Fi, and onboard ST-LINK. Firmware modules now configure the CPU clock, USART1, I2C2 and selected GPIO functions, sample sensor registers, and offer diagnostic/logger serial modes. Target build and live electrical behavior remain unverified.
+
+## Verified pin summary
+
+| Function | MCU mapping |
+|---|---|
+| AHT21 software I2C | PE0=SCL, PE1=SDA |
+| AP3216C and ICM20608 I2C2 | PB10=SCL, PB11=SDA; addresses 0x1E and 0x68 |
+| AP3216C interrupt / ICM interrupt | PG13 / PG12 |
+| Buttons Up, Down, Left, Right | PC5, PC1, PC0, PC4; active-low per schematic pull arrangement |
+| LED red, green, blue | PF12, PF14, PF11 |
+| Buzzer | PB0 |
+| Matrix enable/data | PF2 / PA7 |
+| LCD reset, TE, backlight | PD3, PD6, PF9; LCD bus uses FSMC, NE3=PG10 and A18=PD13 |
+| UART console | USART1 PA9 TX / PA10 RX, 115200 baud |
+| SPI2 | PB13 SCK, PB14 MISO, PB15 MOSI, PB12 flash CS; PF10 Wi-Fi CS |
+| HSE | 8 MHz; supplied schematic has onboard ST-LINK/V2.1 |
+
+The LCD controller is ST7789V3 on FSMC with a 240×240 panel. A full LCD graphics/FSMC driver is not yet included; the current code only resets/backlights it. AHT sensor is marked AHT21 on this schematic, rather than AHT10.
 
 ### Required board details before driver implementation
 
-Please provide the RT-Spark (Spark-1) schematic or confirm the exact mappings for:
+The following items still require firmware implementation or hardware-side confirmation:
 
 | Device | Required details |
 |---|---|
-| AHT10, AP3216C, ICM20608 | I2C/SPI instance, SCL/SDA or SCK/MISO/MOSI/CS pins, address/CS, interrupt pins, bus voltage |
-| LCD | Controller/interface, bus pins, reset/backlight pins |
-| Buttons | GPIO pins, active level, pull configuration |
-| LEDs / matrix | GPIO/PWM/driver interface and pins |
-| Buzzer | GPIO/PWM pin and active level |
-| RTC, external flash, microSD/TF | Device/interface, chip selects, pins, fitted status |
-| Wi-Fi, UART/USB | Module/interface, pins, console baud and connector mapping |
-| Clock and debug | HSE frequency/source, ST-LINK connector/pin mapping |
+| RTC | No discrete RTC identified; MCU RTC backup clock may be configured separately |
+| External flash and microSD | W25Q128 over SPI2; microSD over SDIO; driver integration pending |
+| Wi-Fi | RW007 over SPI2, PF10 CS, PG11 INT, PG15 reset; module protocol driver pending |
+| LCD | ST7789V3/FSMC bus and reset/TE/backlight verified; rendering driver pending |
+| GPIO polarity/functional check | Verify LED/matrix and buzzer active levels safely on target |
 
 ## Build and capture procedure
 
 1. Install PlatformIO Core/VS Code extension and the `ststm32` platform, plus STM32Cube framework packages.
 2. From the repository root run `pio run -e rt_spark_f407`; preserve the complete output as a build log. A successful hardware build cannot be asserted until the custom manifest and framework source integration are validated against the installed PlatformIO version.
-3. Once UART mapping and baud are confirmed and diagnostic firmware is implemented, connect the board and capture `pio device monitor -b <confirmed-baud> | Tee-Object docs/bringup-live.log` in PowerShell. Store genuine output only; do not create synthetic readings.
+3. Connect the board and use `pio device monitor -b 115200`; board console is USART1 on PA9/PA10 via the onboard ST-LINK virtual COM path. Store genuine output only; do not create synthetic readings.
 4. Record board revision, power source, probe/firmware versions, date/time, sensor units and sample intervals, calibration offsets, and initialization/error states with the capture.
 
 ## Integration work still required

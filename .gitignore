@@ -22,6 +22,7 @@ venv/
 # Local captures and machine-specific output (keep templates/manifests)
 data/raw/
 data/private/
+data/raw/
 *.log
 *.elf
 *.hex
