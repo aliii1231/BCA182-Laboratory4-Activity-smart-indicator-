@@ -19,19 +19,57 @@ static void stop(void) { sda(0); scl(1); sda(1); }
 static uint8_t write_byte(uint8_t v) { for(int i=0;i<8;i++){ sda((v&0x80)!=0); scl(1); scl(0); v<<=1; } sda(1); scl(1); uint8_t ack=(uint8_t)!read_sda(); scl(0); return ack; }
 static uint8_t read_byte(uint8_t ack) { uint8_t v=0; sda(1); for(int i=0;i<8;i++){ scl(1); v=(uint8_t)((v<<1)|read_sda()); scl(0); } sda(!ack); scl(1); scl(0); sda(1); return v; }
 
+static uint8_t aht_inited = 0;
+
+static HAL_StatusTypeDef aht_read_status(uint8_t *st)
+{
+    start();
+    if (!write_byte((uint8_t)(AHT_ADDR | 1))) { stop(); return HAL_ERROR; }
+    *st = read_byte(0);
+    stop();
+    return HAL_OK;
+}
+
 HAL_StatusTypeDef AHT_Read(float *temperature_c, float *humidity_pct)
 {
-    uint8_t d[6]; start(); if(!write_byte((uint8_t)(AHT_ADDR|0))) { stop(); return HAL_ERROR; }
-    if(!write_byte(0xAC)||!write_byte(0x33)||!write_byte(0x00)){ stop(); return HAL_ERROR; } stop();
-    vTaskDelay(pdMS_TO_TICKS(85)); start(); if(!write_byte((uint8_t)(AHT_ADDR|1))){ stop(); return HAL_ERROR; }
-    for(int i=0;i<6;i++) { d[i]=read_byte(i<5); }
+    uint8_t d[6];
+
+    if (!aht_inited) {
+        uint8_t st;
+        vTaskDelay(pdMS_TO_TICKS(100));
+        if (aht_read_status(&st) != HAL_OK) return HAL_ERROR;
+        if ((st & 0x18u) != 0x18u) {
+            start();
+            if (!write_byte(AHT_ADDR) || !write_byte(0xBE) ||
+                !write_byte(0x08) || !write_byte(0x00)) { stop(); return HAL_ERROR; }
+            stop();
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        aht_inited = 1;
+    }
+
+    start();
+    if (!write_byte(AHT_ADDR) || !write_byte(0xAC) ||
+        !write_byte(0x33) || !write_byte(0x00)) { stop(); return HAL_ERROR; }
     stop();
-    if(d[0]&0x80u) return HAL_BUSY;
-    uint32_t rh=((uint32_t)d[1]<<12)|((uint32_t)d[2]<<4)|(d[3]>>4);
-    uint32_t tr=((uint32_t)(d[3]&0x0Fu)<<16)|((uint32_t)d[4]<<8)|d[5];
-    *humidity_pct=(float)rh*100.0f/1048576.0f;
-    *temperature_c=(float)tr*200.0f/1048576.0f-50.0f;
-    return (*temperature_c>=-40 && *temperature_c<=85 && *humidity_pct>=0 && *humidity_pct<=100) ? HAL_OK : HAL_ERROR;
+    vTaskDelay(pdMS_TO_TICKS(80));
+
+    for (int tries = 0; ; tries++) {
+        start();
+        if (!write_byte((uint8_t)(AHT_ADDR | 1))) { stop(); return HAL_ERROR; }
+        for (int i = 0; i < 6; i++) { d[i] = read_byte(i < 5); }
+        stop();
+        if (!(d[0] & 0x80u)) break;
+        if (tries >= 4) return HAL_BUSY;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    uint32_t rh = ((uint32_t)d[1] << 12) | ((uint32_t)d[2] << 4) | (d[3] >> 4);
+    uint32_t tr = ((uint32_t)(d[3] & 0x0Fu) << 16) | ((uint32_t)d[4] << 8) | d[5];
+    *humidity_pct  = (float)rh * 100.0f / 1048576.0f;
+    *temperature_c = (float)tr * 200.0f / 1048576.0f - 50.0f;
+    return (*temperature_c >= -40 && *temperature_c <= 85 &&
+            *humidity_pct >= 0 && *humidity_pct <= 100) ? HAL_OK : HAL_ERROR;
 }
 
 static HAL_StatusTypeDef ap_write(uint8_t reg,uint8_t val){uint8_t b[2]={reg,val};return HAL_I2C_Master_Transmit(&hi2c2,AP_ADDR,b,2,50);}
