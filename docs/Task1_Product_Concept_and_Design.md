@@ -1,69 +1,108 @@
-# Task 1 — Product Concept and Design
+# Task 1: Product Concept and Design - Smart Storage Indicator
 
-## Product concept
+BCA182 Laboratory Activity 4 | RT-Thread RT-Spark (STM32F407ZGT6) | Draft v0.1
 
-The Smart Storage Indicator is an experimental monitor for people storing household goods that can be affected by heat, humidity, light, or frequent access; it periodically measures temperature, relative humidity, ambient light, and proximity around a storage container, combines these readings into locally classified storage conditions, and presents an understandable status through the board display, LEDs, buzzer, and serial record so that a user can investigate exposure sooner, with the goal of making storage conditions visible without relying on a network service.
+## 1. Product concept
 
-## Alternative concepts
+The Smart Storage Indicator is a small indicator that sits inside a cabinet, drawer, pantry box or storage container used to keep sensitive household items: non-refrigerated medicines, tea and coffee, spices, dry foods, cosmetics, documents or photographs. The target user is a consumer who stores such items but cannot tell whether the enclosure was opened and left open, or exposed to excess heat or humidity, until the item is already spoiled. The product measures temperature and relative humidity (AHT21) and ambient light and proximity (AP3216C), classifies the storage condition on the STM32F407 itself, and tells the user locally (LCD, LED matrix, LEDs, buzzer) whether the contents are safe, being accessed, or at spoilage risk. The main goal is to warn the user of spoilage risk early, without any Internet connection.
 
-| Concept | Purpose | Selection rationale |
+The product is an experimental prototype. It is not a certified food-safety, pharmaceutical-storage or medical device, and its output must not be relied on for safety-critical decisions.
+
+## 2. Alternative ideas considered
+
+| Idea | Summary | Why it was not selected |
 |---|---|---|
-| Context-Aware Study Desk | Detects desk occupancy and environmental conditions to adjust study reminders or lighting. | Useful, but its expected benefit depends more on activity recognition and room context than on the available environmental sensor set. |
-| Household Object-Handling Monitor | Uses proximity and motion to indicate when a stored or frequently handled object is moved. | The IMU and proximity sensor could support it, but it would not directly communicate storage environment exposure. |
-| **Smart Storage Indicator (selected)** | Classifies storage exposure conditions from temperature, humidity, light, and access cues. | Directly uses the AHT10 and AP3216C primary sensing modalities, supports actionable local feedback, and allows controlled, measurable state definitions. |
+| Context-Aware Study Desk | Uses ambient light, proximity and temperature to judge whether a desk is suitable for studying and whether the user is present. | Ground-truth labels are subjective (what counts as "good" lighting), the state differences are weak, and it closely resembles common tutorial projects. |
+| Household Object-Handling Monitor | Uses the ICM-20608 IMU to classify handling of a stored item (still, carried, shaken, dropped). | Needs a safe and repeatable protocol for drops and impacts, does not use the environmental sensors in the primary function, and makes the AHT21/AP3216C hardware largely idle. |
+| **Smart Storage Indicator (selected)** | Classifies storage condition from environmental sensing. | Has a clear user and a measurable input, three states that can be reproduced safely with household materials, and uses two distinct sensing modalities (thermal/humidity and light/proximity) on the board. |
 
-## Classification states
+## 3. Classification states
 
-These are prototype operational labels, not food-safety or product-preservation guarantees. Thresholds are provisional and must be calibrated to the intended stored item and supported by collected training data before use.
+| Label | State | Definition (provisional) | Local output |
+|---|---|---|---|
+| 0 | Sealed and Safe Storage | Enclosure closed and dark; temperature and humidity within the room's normal range. | Steady low-brightness green on the LED matrix, "SAFE" on the LCD. |
+| 1 | Active Access / Door Open | Sudden light exposure and/or a close proximity reading; temperature near ambient. | Blue pulse, "OPEN" on the LCD, no buzzer unless left open too long. |
+| 2 | Spoilage Risk / Adverse Exposure | High temperature or high humidity, with or without light. | Red indicator, "RISK" on the LCD, buzzer pattern until acknowledged. |
 
-| State | Meaning | Prototype evidence / response |
-|---|---|---|
-| 0 — Sealed & Safe-Range Storage | Recent environmental readings remain within configured limits and no access cue is observed. “Safe-range” means only within prototype thresholds. | Green/normal indication; record window and confidence. |
-| 1 — Active Access / Door Open | Proximity or light changes indicate likely access, or readings show a short access-related transition. | Amber indication; optional brief acknowledged tone; begin an access event record. |
-| 2 — Adverse Exposure Risk | Sustained temperature, humidity, or light readings cross configured exposure thresholds. | Red indication and audible alert subject to acknowledgement; show which measured condition triggered the alert. |
-| 3 — Sensor / System Fault | Required readings are invalid, stale, or unavailable, or required initialization fails. | Distinct fault indication; never silently report normal storage. |
+State 2 must be recorded both in the dark and with light, so that the model does not learn "dark means not risky".
 
-## System architecture
+## 4. System block diagram
 
-```mermaid
-flowchart LR
-  S[Sense: verified onboard sensors and user input] --> P[Process: validation, filtering, features, windows]
-  P --> I[Infer locally: compact trained model on STM32F407]
-  I --> A[Act: LCD, LED or matrix, buzzer]
-  A --> R[Record or transmit: local log, optional reporting]
+```
+ AHT21 (soft I2C)  --\
+                       \                                        LCD (ST7789, FSMC)
+ AP3216C (I2C2)    ----->  Sensor task --> queue --> Inference ---> LED matrix / LEDs
+                       /     (fixed rate,  task      task            Buzzer (PWM)
+ Buttons (GPIO)    --/       validity)       |           |
+                                             v           v
+                                      Logger task   UI/diagnostic task
+                                      (serial, RTC     ^
+                                       timestamps,     |
+                                       SD/Flash)    Buttons: acknowledge,
+                                                    mute, diagnostics, self-test
+ Diagnostic/service: ICM-20608, RTC, SD, SPI Flash, Wi-Fi (RW007), IR TX/RX
 ```
 
-The diagram describes the intended pipeline. Peripheral bus and GPIO assignments remain unconfirmed pending the RT-Spark schematic/pinout.
+All inference and the immediate user response run on the STM32F407. Wi-Fi, where used, only carries event records.
 
-## Component-to-function matrix
+## 5. Component-to-function matrix
 
-Inventory below distinguishes requested/expected components from components confirmed in repository evidence. No board schematic, manifest, or hardware inventory was present at the time of writing; physical presence, pin assignments, and interfaces therefore require board-side confirmation.
+Status values are filled in during Task 2 bring-up on the actual kit.
 
-| Component | Intended function category | Intended use | Repository verification |
+| Component | Role | Function in the product | Verified on kit |
 |---|---|---|---|
-| AHT10 | Primary sensing | Temperature (°C), relative humidity (%RH) | Not verified |
-| AP3216C | Primary sensing | Ambient light and proximity/IR counts | Not verified |
-| ICM20608 | Context sensing; diagnostic/service use | Motion and orientation context | Not verified |
-| LCD | User interaction / output | Status and diagnostic messages | Not verified |
-| LED / LED matrix | User interaction / output | State and fault indication | Not verified |
-| Buzzer | User interaction / output | Acknowledgable warning tone | Not verified |
-| Push buttons | User interaction | Acknowledge, reset, calibrate, mode selection | Not verified |
-| RTC | Logging/communication; diagnostic/service use | Timestamp records | Not verified |
-| External flash | Logging/communication; diagnostic/service use | Local records/model storage if supported | Not verified |
-| microSD / TF | Logging/communication; diagnostic/service use | Removable local records if supported | Not verified |
-| Wi-Fi module | Logging/communication; diagnostic/service use | Optional status/telemetry only | Not verified |
-| UART / USB | Logging/communication; diagnostic/service use | Console, capture, service connection | Not verified |
-| IR, CAN, RS485 interfaces | Diagnostic/service use | Board-specific service interfaces if fitted | Not verified |
+| AHT21 (temperature/humidity, soft I2C, addr 0x38) | Primary sensing | Temperature and RH inputs to the classifier. | Live readings confirmed |
+| AP3216C (ambient light/proximity, I2C2, addr 0x1E) | Primary sensing | Light exposure and hand proximity inputs to the classifier. | Live readings confirmed |
+| ST7789 LCD (FSMC) | Local output | Shows state, readings and warnings. | Pending |
+| LED matrix (19 x SK6805) | Local output | Shows the state with color and pattern. | Pending |
+| Red/blue LEDs | Local output | Status and fault indicators. | Pending |
+| Buzzer | Local output | Warning tone for state 2 and for left-open events. | Pending |
+| Buttons (up/down/left/right) | User input | Acknowledge, mute, change diagnostic page, self-test. | Pending (events print on serial) |
+| ICM-20608 IMU (I2C2, addr 0x68) | Diagnostic/service | Detects that the enclosure was moved or tilted, sensor health check. | WHO_AM_I 0xAF confirmed; accel/gyro pending |
+| RTC | Diagnostic/service | Timestamps for logs. | Pending |
+| microSD, SPI Flash (W25Q128) | Diagnostic/service | Local event log and configuration storage. | Pending |
+| Wi-Fi (RW007) | Diagnostic/service | Optional event reporting; never required for inference. | Pending |
+| IR transmitter/receiver | Diagnostic/service | Self-test only. | Pending |
+| CAN, RS485, USB, expansion headers | Not used | No attached module; documented as unused. | n/a |
 
-## Acceptance criteria and measurement plan
+## 6. Acceptance criteria
 
-- In normal operation, valid sensor windows produce one of the defined local states, and each state updates the available display/LED feedback. Missing or invalid required input produces State 3 rather than a normal indication.
-- A controlled environmental/access sequence must exercise all configured states. Evaluate with at least 30 training windows and 10 separate-session held-out windows per class, then 20 independent product trials per class after tuning.
-- Report the confusion matrix, per-class precision and recall, false-negative and false-positive counts, capture-to-response latency, at least 50 on-device inference timings, memory footprint, a 15-minute continuous run, and a 5-minute offline run. Hardware results remain pending actual board execution and must not be estimated or fabricated.
-- False negatives for adverse exposure can delay a user's response; false positives can cause alert fatigue. State 0 is not a guarantee that stored contents are safe.
-- Privacy risk is low for environmental-only telemetry but rises if logs include timestamps or user activity; retain only necessary local data and avoid identifying user records. Accessibility requires distinguishable visual and audible/haptic-independent status cues, readable text, and alert acknowledgement. Buzzer volume and alert behavior must not create a startle or hearing risk.
-- This is an experimental prototype and is not certified for food, medicine, or other safety-critical storage decisions.
+These are targets. They will be confirmed or revised after the dataset and bring-up measurements exist.
 
-## Hardware verification gate
+| Area | Target |
+|---|---|
+| Held-out accuracy | Per-class recall at least 90 percent for State 2 and at least 85 percent for States 0 and 1, on windows from sessions not used for training. |
+| Errors that matter | Missed State 2 (spoilage risk reported as safe) is the most serious error. False State 2 alarms in States 0 and 1 should be at most 5 percent. |
+| Baseline | The trained model must beat the threshold baseline in section 8 on the same held-out windows, or the report states that it did not. |
+| Response time | State change shown on the LCD and LED matrix within one window length plus 2 s after the condition begins. |
+| Inference | At least 50 on-board runs; median and 95th percentile time reported. |
+| Offline | At least 5 consecutive minutes of correct operation with no network. |
+| Soak | 15 minute continuous run with no crash, hang or unresponsive button. |
+| Memory | Model Flash and RAM footprint and total firmware use reported; task stack high-water marks above zero margin. |
 
-Before any sensor or UI driver is wired to GPIO/I2C/SPI/UART, provide or confirm the RT-Spark (Spark-1) schematic or verified pin mapping for AHT10, AP3216C, ICM20608, LCD, buttons, LEDs, buzzer, RTC, storage, and communication modules. No pin mapping is inferred from a generic STM32F407 board.
+Measurement plan: 30 training and 10 held-out windows per class from separate sessions, then 20 further independent trials per state that are not used for training or tuning, using the same procedure each time (see the capture protocol).
+
+## 7. Risks
+
+- **Privacy:** The device records only environmental values and timestamps, not images, audio or personal data. Optional Wi-Fi reports must not include personal identifiers, and no credentials are committed to the repository.
+- **Accessibility:** State is never conveyed by color alone: the LCD shows text, the LED matrix uses distinct patterns, and the buzzer pattern differs per state. A mute button lets users silence the buzzer, and a visible indicator remains.
+- **Safety:** State 2 is simulated with warm (not hot) water and exhaled breath only, with no liquid contact with the board and no flames or heat guns. The board should not be allowed to exceed about 45 degrees Celsius during tests. False reassurance is the main user risk, so the product is labeled an experimental prototype and does not claim to protect any item.
+
+## 8. Baseline (threshold) rule
+
+Compared against the trained model on the same held-out windows. Values are provisional and are set from the collected dataset, not from guesses.
+
+```
+if temp_c >= T_HI or rh_pct >= RH_HI:      state = 2
+elif ambient_raw >= L_OPEN or proximity_raw >= P_NEAR:  state = 1
+else:                                       state = 0
+```
+
+Starting values for tuning: T_HI about 38 C, RH_HI about 85 percent, L_OPEN about 50 raw counts above the measured dark baseline, P_NEAR taken from the proximity values seen when a hand is near the sensor.
+
+## 9. Known limitations and open items
+
+- The first bring-up reading was 32.96 C and 72.93 percent RH with `ambient_raw=10` and `proximity_raw=0`. These are uncalibrated and the temperature is probably elevated by board self-heating. A calibration offset (`cal_temp_c`) will be determined and documented.
+- The LCD backlight and LED matrix can leak light into the AP3216C. The effect will be measured and, if significant, the outputs will be dimmed or timed so they do not corrupt the light reading.
+- The sensor interval is currently 1 s. A short lid opening produces only a few samples at this rate, so the sampling rate must be fixed before data collection.
+- The labels depend on how the states are simulated. The simulation procedure is part of the dataset documentation.
