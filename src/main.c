@@ -63,6 +63,11 @@ static void SensorTask(void *arg)
 {
     (void)arg; TickType_t last=xTaskGetTickCount(); uint32_t seq=0;
     char ts[16], hs[16];
+    uint8_t imu_ok=0;
+    for (unsigned attempt=0; attempt<3 && !imu_ok; ++attempt) {
+        if (ICM20608_Init()==HAL_OK) imu_ok=1;
+        else if (attempt<2) vTaskDelay(pdMS_TO_TICKS(100));
+    }
     App_Printf("BOOT,RT-SPARK,STM32F407ZGT6,clock_hz=%lu\r\n",(unsigned long)HAL_RCC_GetHCLKFreq());
     App_Printf("DIAG,interval_ms=1000,cal_temp_c=0.0,cal_rh_pct=0.0\r\n");
     if(data_logger_mode) App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");
@@ -74,6 +79,10 @@ static void SensorTask(void *arg)
         if(aht_status==HAL_OK){s.temperature_c=t;s.humidity_pct=h;s.valid_mask|=1;}
         if(AP3216C_Read(&a,&p)==HAL_OK){s.ambient_raw=a;s.proximity_raw=p;s.valid_mask|=2;}
         HAL_StatusTypeDef icm=ICM20608_ReadWhoAmI(&w);
+        imu_raw_t imu;
+        HAL_StatusTypeDef imu_status=(imu_ok && ICM20608_ReadRaw(&imu)==HAL_OK)?HAL_OK:HAL_ERROR;
+        if(imu_status==HAL_OK) App_Printf("IMU,tick_ms=%lu,ax_mg=%ld,ay_mg=%ld,az_mg=%ld,gx_mdps=%ld,gy_mdps=%ld,gz_mdps=%ld,imu_temp_cx100=%ld,imu_ok=1\r\n",(unsigned long)HAL_GetTick(),(long)imu.ax*1000L/16384L,(long)imu.ay*1000L/16384L,(long)imu.az*1000L/16384L,(long)imu.gx*1000L/131L,(long)imu.gy*1000L/131L,(long)imu.gz*1000L/131L,(long)imu.temp*1000L/3268L+2500L);
+        else App_Printf("IMU,tick_ms=%lu,imu_ok=0\r\n",(unsigned long)HAL_GetTick());
         if(data_logger_mode){
           if(aht_status==HAL_OK) App_Printf("DATA,%s,%u,%lu,%lu,%s,%s,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
           else App_Printf("DATA,%s,%u,%lu,%lu,NA,NA,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);

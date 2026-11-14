@@ -90,3 +90,39 @@ HAL_StatusTypeDef ICM20608_ReadWhoAmI(uint8_t *whoami)
     if(HAL_I2C_Mem_Read(&hi2c2,ICM_ADDR,0x75,I2C_MEMADD_SIZE_8BIT,whoami,1,50)!=HAL_OK)return HAL_ERROR;
     return (*whoami==0xAFu) ? HAL_OK : HAL_ERROR;
 }
+
+static HAL_StatusTypeDef icm_write(uint8_t reg, uint8_t value)
+{
+    return HAL_I2C_Mem_Write(&hi2c2, ICM_ADDR, reg, I2C_MEMADD_SIZE_8BIT, &value, 1, 50);
+}
+
+HAL_StatusTypeDef ICM20608_Init(void)
+{
+    uint8_t whoami;
+    if (ICM20608_ReadWhoAmI(&whoami) != HAL_OK || whoami != 0xAFu) return HAL_ERROR;
+    if (icm_write(0x6B,0x80)!=HAL_OK) return HAL_ERROR;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    if (icm_write(0x6B,0x01)!=HAL_OK) return HAL_ERROR;
+    vTaskDelay(pdMS_TO_TICKS(50));
+    if (icm_write(0x6C,0x00)!=HAL_OK) return HAL_ERROR;
+    if (icm_write(0x19,0x09)!=HAL_OK) return HAL_ERROR;
+    if (icm_write(0x1A,0x03)!=HAL_OK) return HAL_ERROR;
+    if (icm_write(0x1B,0x00)!=HAL_OK) return HAL_ERROR;
+    if (icm_write(0x1C,0x00)!=HAL_OK) return HAL_ERROR;
+    if (icm_write(0x1D,0x03)!=HAL_OK) return HAL_ERROR;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef ICM20608_ReadRaw(imu_raw_t *o)
+{
+    uint8_t buf[14];
+    if (HAL_I2C_Mem_Read(&hi2c2, ICM_ADDR, 0x3B, I2C_MEMADD_SIZE_8BIT, buf, 14, 50) != HAL_OK) return HAL_ERROR;
+    o->ax=(int16_t)((uint16_t)buf[0]<<8|buf[1]);
+    o->ay=(int16_t)((uint16_t)buf[2]<<8|buf[3]);
+    o->az=(int16_t)((uint16_t)buf[4]<<8|buf[5]);
+    o->temp=(int16_t)((uint16_t)buf[6]<<8|buf[7]);
+    o->gx=(int16_t)((uint16_t)buf[8]<<8|buf[9]);
+    o->gy=(int16_t)((uint16_t)buf[10]<<8|buf[11]);
+    o->gz=(int16_t)((uint16_t)buf[12]<<8|buf[13]);
+    return HAL_OK;
+}

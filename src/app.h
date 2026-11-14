@@ -18,11 +18,15 @@ typedef struct {
     uint8_t button_mask;
 } sensor_sample_t;
 
+typedef struct { int16_t ax,ay,az,temp,gx,gy,gz; } imu_raw_t;
+
 void App_Init(void);
 void App_Printf(const char *format, ...);
 HAL_StatusTypeDef AHT_Read(float *temperature_c, float *humidity_pct);
 HAL_StatusTypeDef AP3216C_Read(uint16_t *ambient, uint16_t *proximity);
 HAL_StatusTypeDef ICM20608_ReadWhoAmI(uint8_t *whoami);
+HAL_StatusTypeDef ICM20608_Init(void);
+HAL_StatusTypeDef ICM20608_ReadRaw(imu_raw_t *o);
 void Board_UI_Init(void);
 void Board_UI_Indicate(uint8_t state);
 void Board_LCD_Init(void);
