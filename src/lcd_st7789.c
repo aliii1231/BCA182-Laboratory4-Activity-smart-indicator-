@@ -1,4 +1,6 @@
+#include "app.h"
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_sram.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "board_pins.h"
@@ -35,8 +37,8 @@ static void fsmc_init(void)
     n.WriteOperation=FSMC_WRITE_OPERATION_ENABLE;n.WaitSignal=FSMC_WAIT_SIGNAL_DISABLE;n.ExtendedMode=FSMC_EXTENDED_MODE_DISABLE;
     n.AsynchronousWait=FSMC_ASYNCHRONOUS_WAIT_DISABLE;n.WriteBurst=FSMC_WRITE_BURST_DISABLE;
     t.AddressSetupTime=5;t.AddressHoldTime=1;t.DataSetupTime=7;t.BusTurnAroundDuration=1;t.CLKDivision=2;t.DataLatency=2;t.AccessMode=FSMC_ACCESS_MODE_A;
-    FSMC_NORSRAM_HandleTypeDef h={0};h.Instance=FSMC_NORSRAM_DEVICE;h.Extended=FSMC_NORSRAM_EXTENDED_DEVICE;h.Init=n;
-    if(HAL_FSMC_NORSRAM_Init(&h,&t,NULL)!=HAL_OK)Error_Handler();
+    SRAM_HandleTypeDef h={0};h.Instance=FSMC_NORSRAM_DEVICE;h.Extended=FSMC_NORSRAM_EXTENDED_DEVICE;h.Init=n;
+    if(HAL_SRAM_Init(&h,&t,NULL)!=HAL_OK)Error_Handler();
 }
 
 int lcd_init(void)
@@ -77,7 +79,10 @@ static const uint8_t font[96][5]={
 void lcd_draw_string(uint16_t x,uint16_t y,const char *str,uint16_t fg,uint16_t bg)
 {
     while(*str&&x+8<=LCD_W){uint8_t c=(uint8_t)*str++;if(c<32||c>127)c='?';uint8_t idx=(uint8_t)(c-32);address_window(x,y,x+7,y+7);
-      for(uint8_t row=0;row<8;row++)for(uint8_t col=0;col<8;col++){uint8_t on=(col<5&&row<7)?((font[idx][col]>>row)&1U):0;uint16_t px=on?fg:bg;data(px>>8);data(px&255);}x+=8;
+      for(uint8_t row=0;row<8;row++) {
+        for(uint8_t col=0;col<8;col++) { uint8_t on=(col<5&&row<7)?((font[idx][col]>>row)&1U):0;uint16_t px=on?fg:bg;data(px>>8);data(px&255); }
+      }
+      x+=8;
     }
 }
 
