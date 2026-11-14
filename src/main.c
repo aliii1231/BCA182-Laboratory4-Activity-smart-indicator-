@@ -16,6 +16,37 @@ extern UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
 static RTC_HandleTypeDef hrtc;
 static uint8_t rtc_ready=0;
+static SPI_HandleTypeDef hspi2_diag;
+static SD_HandleTypeDef hsd_diag;
+
+static void storage_diagnostics(void)
+{
+    __HAL_RCC_GPIOB_CLK_ENABLE(); __HAL_RCC_GPIOC_CLK_ENABLE(); __HAL_RCC_GPIOD_CLK_ENABLE(); __HAL_RCC_SPI2_CLK_ENABLE();
+    GPIO_InitTypeDef g={0};
+    g.Pin=GPIO_PIN_13;g.Mode=GPIO_MODE_AF_PP;g.Pull=GPIO_NOPULL;g.Speed=GPIO_SPEED_FREQ_VERY_HIGH;g.Alternate=GPIO_AF5_SPI2;HAL_GPIO_Init(GPIOB,&g);
+    g.Pin=GPIO_PIN_2|GPIO_PIN_3;g.Mode=GPIO_MODE_AF_PP;g.Alternate=GPIO_AF5_SPI2;HAL_GPIO_Init(GPIOC,&g);
+    g.Pin=GPIO_PIN_12;g.Mode=GPIO_MODE_OUTPUT_PP;g.Pull=GPIO_PULLUP;HAL_GPIO_Init(GPIOB,&g);HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);
+    hspi2_diag.Instance=SPI2;hspi2_diag.Init.Mode=SPI_MODE_MASTER;hspi2_diag.Init.Direction=SPI_DIRECTION_2LINES;
+    hspi2_diag.Init.DataSize=SPI_DATASIZE_8BIT;hspi2_diag.Init.CLKPolarity=SPI_POLARITY_LOW;hspi2_diag.Init.CLKPhase=SPI_PHASE_1EDGE;
+    hspi2_diag.Init.NSS=SPI_NSS_SOFT;hspi2_diag.Init.BaudRatePrescaler=SPI_BAUDRATEPRESCALER_64;hspi2_diag.Init.FirstBit=SPI_FIRSTBIT_MSB;
+    hspi2_diag.Init.TIMode=SPI_TIMODE_DISABLE;hspi2_diag.Init.CRCCalculation=SPI_CRCCALCULATION_DISABLE;hspi2_diag.Init.CRCPolynomial=7;
+    uint8_t id[3]={0};uint8_t tx[4]={0x9F,0xFF,0xFF,0xFF},rx[4]={0};
+    uint8_t flash_ok=0;
+    if(HAL_SPI_Init(&hspi2_diag)==HAL_OK){HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);HAL_StatusTypeDef st=HAL_SPI_TransmitReceive(&hspi2_diag,tx,rx,4,100);HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);if(st==HAL_OK){id[0]=rx[1];id[1]=rx[2];id[2]=rx[3];flash_ok=(id[0]==0xEF&&id[1]==0x40&&id[2]==0x18);}}
+    App_Printf("FLASH,id=%02X%02X%02X,ok=%u\r\n",id[0],id[1],id[2],flash_ok);
+
+    __HAL_RCC_SDIO_CLK_ENABLE();
+    g.Pin=GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;g.Mode=GPIO_MODE_AF_PP;g.Pull=GPIO_PULLUP;g.Speed=GPIO_SPEED_FREQ_VERY_HIGH;g.Alternate=GPIO_AF12_SDIO;HAL_GPIO_Init(GPIOC,&g);
+    g.Pin=GPIO_PIN_2;HAL_GPIO_Init(GPIOD,&g);
+    g.Pin=GPIO_PIN_3;g.Mode=GPIO_MODE_INPUT;g.Pull=GPIO_PULLUP;HAL_GPIO_Init(GPIOF,&g);
+    uint8_t present=(HAL_GPIO_ReadPin(GPIOF,GPIO_PIN_3)==GPIO_PIN_RESET);uint8_t sd_ok=0;uint32_t blocks=0;uint8_t block[512];
+    if(present){
+      hsd_diag.Instance=SDIO;hsd_diag.Init.ClockEdge=SDIO_CLOCK_EDGE_RISING;hsd_diag.Init.ClockBypass=SDIO_CLOCK_BYPASS_DISABLE;
+      hsd_diag.Init.ClockPowerSave=SDIO_CLOCK_POWER_SAVE_DISABLE;hsd_diag.Init.BusWide=SDIO_BUS_WIDE_1B;hsd_diag.Init.HardwareFlowControl=SDIO_HARDWARE_FLOW_CONTROL_DISABLE;hsd_diag.Init.ClockDiv=118;
+      if(HAL_SD_Init(&hsd_diag)==HAL_OK){HAL_SD_CardInfoTypeDef info;if(HAL_SD_GetCardInfo(&hsd_diag,&info)==HAL_OK){blocks=(uint32_t)info.BlockNbr;sd_ok=(HAL_SD_ReadBlocks(&hsd_diag,block,0,1,500)==HAL_OK);}}
+    }
+    App_Printf("SD,present=%u,blocks=%lu,ok=%u\r\n",present,(unsigned long)blocks,sd_ok);
+}
 
 static void rtc_init(void)
 {
@@ -114,6 +145,7 @@ static void SensorTask(void *arg)
         else if (attempt<2) vTaskDelay(pdMS_TO_TICKS(100));
     }
     App_Printf("BOOT,RT-SPARK,STM32F407ZGT6,clock_hz=%lu\r\n",(unsigned long)HAL_RCC_GetHCLKFreq());
+    storage_diagnostics();
     App_Printf("DIAG,interval_ms=1000,cal_temp_c=0.0,cal_rh_pct=0.0\r\n");
     if(data_logger_mode) App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");
     for(;;){
