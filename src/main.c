@@ -14,6 +14,47 @@
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
+static RTC_HandleTypeDef hrtc;
+static uint8_t rtc_ready=0;
+
+static void rtc_init(void)
+{
+    __HAL_RCC_PWR_CLK_ENABLE(); HAL_PWR_EnableBkUpAccess();
+    RCC_OscInitTypeDef osc={0}; osc.OscillatorType=RCC_OSCILLATORTYPE_LSE; osc.LSEState=RCC_LSE_ON;
+    if(HAL_RCC_OscConfig(&osc)!=HAL_OK) return;
+    RCC_PeriphCLKInitTypeDef pclk={0}; pclk.PeriphClockSelection=RCC_PERIPHCLK_RTC; pclk.RTCClockSelection=RCC_RTCCLKSOURCE_LSE;
+    if(HAL_RCCEx_PeriphCLKConfig(&pclk)!=HAL_OK)return;
+    __HAL_RCC_RTC_ENABLE(); hrtc.Instance=RTC; hrtc.Init.HourFormat=RTC_HOURFORMAT_24;
+    hrtc.Init.AsynchPrediv=127; hrtc.Init.SynchPrediv=255; hrtc.Init.OutPut=RTC_OUTPUT_DISABLE;
+    hrtc.Init.OutPutPolarity=RTC_OUTPUT_POLARITY_HIGH; hrtc.Init.OutPutType=RTC_OUTPUT_TYPE_OPENDRAIN;
+    if(HAL_RTC_Init(&hrtc)!=HAL_OK)return;
+    if(HAL_RTCEx_BKUPRead(&hrtc,RTC_BKP_DR0)!=0x51A7U){
+        RTC_TimeTypeDef t={0}; RTC_DateTypeDef d={0};
+        t.Hours=0;t.Minutes=0;t.Seconds=0;t.TimeFormat=RTC_HOURFORMAT_24;
+        d.Year=26;d.Month=1;d.Date=1;d.WeekDay=RTC_WEEKDAY_THURSDAY;
+        if(HAL_RTC_SetTime(&hrtc,&t,RTC_FORMAT_BIN)!=HAL_OK || HAL_RTC_SetDate(&hrtc,&d,RTC_FORMAT_BIN)!=HAL_OK)return;
+        HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR0,0x51A7U);
+    }
+    rtc_ready=1;
+}
+
+static uint8_t rtc_set_from_text(const char *s)
+{
+    unsigned y,mo,d,h,mi,se; char tail;
+    if(sscanf(s,"%4u-%2u-%2u,%2u:%2u:%2u%c",&y,&mo,&d,&h,&mi,&se,&tail)!=6 || y<2000||y>2099||mo<1||mo>12||d<1||d>31||h>23||mi>59||se>59)return 0;
+    RTC_TimeTypeDef t={0};RTC_DateTypeDef dt={0};t.Hours=h;t.Minutes=mi;t.Seconds=se;t.TimeFormat=RTC_HOURFORMAT_24;
+    dt.Year=(uint8_t)(y-2000);dt.Month=(uint8_t)mo;dt.Date=(uint8_t)d;dt.WeekDay=RTC_WEEKDAY_MONDAY;
+    if(HAL_RTC_SetTime(&hrtc,&t,RTC_FORMAT_BIN)!=HAL_OK||HAL_RTC_SetDate(&hrtc,&dt,RTC_FORMAT_BIN)!=HAL_OK)return 0;
+    HAL_RTCEx_BKUPWrite(&hrtc,RTC_BKP_DR0,0x51A7U);return 1;
+}
+
+static void rtc_print(void)
+{
+    if(!rtc_ready)return;
+    RTC_TimeTypeDef t={0};RTC_DateTypeDef d={0};
+    if(HAL_RTC_GetTime(&hrtc,&t,RTC_FORMAT_BIN)!=HAL_OK||HAL_RTC_GetDate(&hrtc,&d,RTC_FORMAT_BIN)!=HAL_OK){App_Printf("RTC,iso=NA\r\n");return;}
+    App_Printf("RTC,iso=20%02u-%02u-%02uT%02u:%02u:%02u\r\n",d.Year,d.Month,d.Date,t.Hours,t.Minutes,t.Seconds);
+}
 
 static volatile uint8_t data_logger_mode=0;
 static SemaphoreHandle_t uart_mutex;
@@ -65,6 +106,7 @@ static uint8_t buttons(void)
 static void SensorTask(void *arg)
 {
     (void)arg; TickType_t last=xTaskGetTickCount(); uint32_t seq=0;
+    TickType_t last_rtc=last;
     char ts[16], hs[16];
     uint8_t imu_ok=0;
     for (unsigned attempt=0; attempt<3 && !imu_ok; ++attempt) {
@@ -75,6 +117,7 @@ static void SensorTask(void *arg)
     App_Printf("DIAG,interval_ms=1000,cal_temp_c=0.0,cal_rh_pct=0.0\r\n");
     if(data_logger_mode) App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");
     for(;;){
+        if((TickType_t)(xTaskGetTickCount()-last_rtc)>=pdMS_TO_TICKS(10000)){rtc_print();last_rtc=xTaskGetTickCount();}
         sensor_sample_t s={0}; s.tick_ms=HAL_GetTick(); s.button_mask=buttons();
         float t=0,h=0; uint16_t a=0,p=0; uint8_t w=0;
         HAL_StatusTypeDef aht_status=AHT_Read(&t,&h);
@@ -127,7 +170,8 @@ static void ConsoleTask(void *arg)
               if(n>0&&n<sizeof(log_session)&&lab<=3){taskENTER_CRITICAL();memcpy(log_session,line+2,n+1);taskEXIT_CRITICAL();log_label=(uint8_t)lab;data_logger_mode=1;App_Printf("MODE,logger,session=%s,label=%u\r\n",log_session,lab);App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");}
               else App_Printf("ERROR,logger_command\r\n");
             } else App_Printf("ERROR,expected_l=session,label\r\n");
-          } else if(line[0]=='d'){data_logger_mode=0;App_Printf("MODE,diagnostic\r\n");}
+          } else if(line[0]=='t'&&line[1]=='='){if(rtc_ready&&rtc_set_from_text(line+2))App_Printf("RTC,set=ok\r\n");else App_Printf("RTC,set=error\r\n");}
+          else if(line[0]=='d'){data_logger_mode=0;App_Printf("MODE,diagnostic\r\n");}
           else if(line[0]=='x'){data_logger_mode=0;App_Printf("MODE,stopped\r\n");}
           used=0;
         } else if(used<sizeof(line)-1) line[used++]=(char)ch;
@@ -138,7 +182,7 @@ static void ConsoleTask(void *arg)
 
 int main(void)
 {
-    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_Out_Init(); matrix_init();
+    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_Out_Init(); matrix_init(); rtc_init();
     if(!lcd_init()) App_Printf("INIT,lcd=error\r\n");
     App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=reset_only\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
