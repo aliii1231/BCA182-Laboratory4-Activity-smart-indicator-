@@ -1,5 +1,6 @@
 #include "app.h"
 #include "board_pins.h"
+#include "board_out.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdarg.h>
@@ -96,8 +97,18 @@ static void SensorTask(void *arg)
 
 static void UITask(void *arg)
 {
-    (void)arg; uint8_t prev=0;
-    for(;;){uint8_t b=buttons(); if(b && b!=prev) App_Printf("BUTTON,tick_ms=%lu,mask=%u\r\n",(unsigned long)HAL_GetTick(),b); prev=b; vTaskDelay(pdMS_TO_TICKS(25));}
+    (void)arg; uint8_t prev=0, page=0, muted=0;
+    for(;;){
+        uint8_t b=buttons();
+        if(b && b!=prev){
+            App_Printf("BUTTON,tick_ms=%lu,mask=%u\r\n",(unsigned long)HAL_GetTick(),b);
+            if((b&1U)!=0U){page++;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
+            if((b&2U)!=0U){if(page>0)page--;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
+            if((b&4U)!=0U){muted=!muted;App_Printf("UI,tick_ms=%lu,mute=%u\r\n",(unsigned long)HAL_GetTick(),muted);}
+            if((b&8U)!=0U)Board_SelfTest();
+        }
+        prev=b; vTaskDelay(pdMS_TO_TICKS(25));
+    }
 }
 
 static void ConsoleTask(void *arg)
@@ -125,7 +136,7 @@ static void ConsoleTask(void *arg)
 
 int main(void)
 {
-    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_LCD_Init();
+    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_LCD_Init(); Board_Out_Init();
     App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=reset_only\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
     if(uart_mutex==NULL || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();
