@@ -20,6 +20,17 @@ static void SensorTask(void *arg);
 static void UITask(void *arg);
 static void ConsoleTask(void *arg);
 
+static void fx(char *out, size_t out_size, float value, unsigned decimals)
+{
+    int32_t scale = (decimals == 3U) ? 1000 : 100;
+    int32_t scaled = (int32_t)(value * (float)scale + (value >= 0.0f ? 0.5f : -0.5f));
+    uint32_t magnitude = (scaled < 0) ? (uint32_t)(-scaled) : (uint32_t)scaled;
+    uint32_t whole = magnitude / (uint32_t)scale;
+    uint32_t fraction = magnitude % (uint32_t)scale;
+    if (decimals == 3U) snprintf(out, out_size, "%s%lu.%03lu", scaled < 0 ? "-" : "", (unsigned long)whole, (unsigned long)fraction);
+    else snprintf(out, out_size, "%s%lu.%02lu", scaled < 0 ? "-" : "", (unsigned long)whole, (unsigned long)fraction);
+}
+
 void App_Printf(const char *format,...)
 {
     char buffer[256];
@@ -51,6 +62,7 @@ static uint8_t buttons(void)
 static void SensorTask(void *arg)
 {
     (void)arg; TickType_t last=xTaskGetTickCount(); uint32_t seq=0;
+    char ts[16], hs[16];
     App_Printf("BOOT,RT-SPARK,STM32F407ZGT6,clock_hz=%lu\r\n",(unsigned long)HAL_RCC_GetHCLKFreq());
     App_Printf("DIAG,interval_ms=1000,cal_temp_c=0.0,cal_rh_pct=0.0\r\n");
     if(data_logger_mode) App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");
@@ -58,14 +70,15 @@ static void SensorTask(void *arg)
         sensor_sample_t s={0}; s.tick_ms=HAL_GetTick(); s.button_mask=buttons();
         float t=0,h=0; uint16_t a=0,p=0; uint8_t w=0;
         HAL_StatusTypeDef aht_status=AHT_Read(&t,&h);
+        if(aht_status==HAL_OK){fx(ts,sizeof ts,t,3);fx(hs,sizeof hs,h,3);}
         if(aht_status==HAL_OK){s.temperature_c=t;s.humidity_pct=h;s.valid_mask|=1;}
         if(AP3216C_Read(&a,&p)==HAL_OK){s.ambient_raw=a;s.proximity_raw=p;s.valid_mask|=2;}
         HAL_StatusTypeDef icm=ICM20608_ReadWhoAmI(&w);
         if(data_logger_mode){
-          if(aht_status==HAL_OK) App_Printf("DATA,%s,%u,%lu,%lu,%.3f,%.3f,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,s.temperature_c,s.humidity_pct,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
+          if(aht_status==HAL_OK) App_Printf("DATA,%s,%u,%lu,%lu,%s,%s,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
           else App_Printf("DATA,%s,%u,%lu,%lu,NA,NA,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
         } else {
-          if(aht_status==HAL_OK) App_Printf("SENSOR,tick_ms=%lu,temp_c=%.2f,rh_pct=%.2f,ambient_raw=%u,proximity_raw=%u,valid=0x%02X,icm_whoami=0x%02X,icm_ok=%u,interval_ms=1000,cal_temp_c=0,cal_rh_pct=0\r\n",(unsigned long)s.tick_ms,s.temperature_c,s.humidity_pct,s.ambient_raw,s.proximity_raw,s.valid_mask,w,(icm==HAL_OK));
+          if(aht_status==HAL_OK){fx(ts,sizeof ts,t,2);fx(hs,sizeof hs,h,2);App_Printf("SENSOR,tick_ms=%lu,temp_c=%s,rh_pct=%s,ambient_raw=%u,proximity_raw=%u,valid=0x%02X,icm_whoami=0x%02X,icm_ok=%u,interval_ms=1000,cal_temp_c=0,cal_rh_pct=0\r\n",(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,w,(icm==HAL_OK));}
           else App_Printf("SENSOR,tick_ms=%lu,temp_c=NA,rh_pct=NA,ambient_raw=%u,proximity_raw=%u,valid=0x%02X,aht_error=%u,icm_whoami=0x%02X,icm_ok=%u,interval_ms=1000,cal_temp_c=0,cal_rh_pct=0\r\n",(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,(unsigned)aht_status,w,(icm==HAL_OK));
         }
         vTaskDelayUntil(&last,pdMS_TO_TICKS(1000));
