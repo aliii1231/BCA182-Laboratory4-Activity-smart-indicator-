@@ -2,6 +2,7 @@
 #include "board_pins.h"
 #include "board_out.h"
 #include "led_matrix.h"
+#include "lcd_st7789.h"
 
 extern void App_Printf(const char *format, ...);
 static TIM_HandleTypeDef htim3;
@@ -57,4 +58,6 @@ void Board_SelfTest(void)
     buzzer_tone(1); vTaskDelay(pdMS_TO_TICKS(20)); buzzer_tone(0);
     App_Printf("SELFTEST,tick_ms=%lu,step=matrix\r\n",(unsigned long)HAL_GetTick());
     matrix_test();
+    App_Printf("SELFTEST,tick_ms=%lu,step=lcd\r\n",(unsigned long)HAL_GetTick());
+    lcd_test();
 }
