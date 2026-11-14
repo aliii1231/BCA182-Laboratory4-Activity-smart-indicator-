@@ -1,6 +1,7 @@
 #include "app.h"
 #include "board_pins.h"
 #include "board_out.h"
+#include "led_matrix.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdarg.h>
@@ -136,7 +137,7 @@ static void ConsoleTask(void *arg)
 
 int main(void)
 {
-    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_LCD_Init(); Board_Out_Init();
+    HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_LCD_Init(); Board_Out_Init(); matrix_init();
     App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=reset_only\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
     if(uart_mutex==NULL || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();

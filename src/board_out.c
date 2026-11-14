@@ -1,6 +1,7 @@
 #include "app.h"
 #include "board_pins.h"
 #include "board_out.h"
+#include "led_matrix.h"
 
 extern void App_Printf(const char *format, ...);
 static TIM_HandleTypeDef htim3;
@@ -54,4 +55,6 @@ void Board_SelfTest(void)
     led_set(LED_COLOR_BLUE,1); vTaskDelay(pdMS_TO_TICKS(20)); led_set(LED_COLOR_BLUE,0);
     App_Printf("SELFTEST,tick_ms=%lu,step=beep\r\n",(unsigned long)HAL_GetTick());
     buzzer_tone(1); vTaskDelay(pdMS_TO_TICKS(20)); buzzer_tone(0);
+    App_Printf("SELFTEST,tick_ms=%lu,step=matrix\r\n",(unsigned long)HAL_GetTick());
+    matrix_test();
 }
