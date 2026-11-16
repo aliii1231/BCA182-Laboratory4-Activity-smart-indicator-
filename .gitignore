@@ -21,9 +21,9 @@ __pycache__/
 venv/
 
 # Local captures and machine-specific output (keep templates/manifests)
-data/raw/
 data/private/
-data/raw/
+data/raw/dryrun.csv
+data/transcripts/dryrun.log
 *.log
 *.elf
 *.hex
