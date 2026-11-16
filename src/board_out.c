@@ -5,6 +5,9 @@
 #include "lcd_st7789.h"
 
 extern void App_Printf(const char *format, ...);
+extern volatile uint8_t data_logger_mode;
+extern volatile uint8_t log_label;
+extern char log_session[24];
 static TIM_HandleTypeDef htim3;
 
 void Board_Out_Init(void)
@@ -60,4 +63,5 @@ void Board_SelfTest(void)
     matrix_test();
     App_Printf("SELFTEST,tick_ms=%lu,step=lcd\r\n",(unsigned long)HAL_GetTick());
     lcd_test();
+    if(data_logger_mode) lcd_show_recording(log_session,log_label); else lcd_show_idle();
 }

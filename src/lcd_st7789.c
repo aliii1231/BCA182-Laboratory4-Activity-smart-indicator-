@@ -98,3 +98,19 @@ void lcd_test(void)
 {
     lcd_fill(0xF800);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x07E0);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x001F);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0);lcd_draw_string(4,4,"LCD TEST",0xFFFF,0);
 }
+
+void lcd_show_idle(void)
+{
+    lcd_fill(0x0000);
+    lcd_draw_string(4,4,"IDLE",0x7BEF,0x0000);
+}
+
+void lcd_show_recording(const char *session,uint8_t label)
+{
+    char line[32];
+    lcd_fill(0x0000);
+    snprintf(line,sizeof line,"REC s=%.20s",session);
+    lcd_draw_string(4,4,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"LABEL %u",(unsigned)label);
+    lcd_draw_string(4,20,line,0x7BEF,0x0000);
+}

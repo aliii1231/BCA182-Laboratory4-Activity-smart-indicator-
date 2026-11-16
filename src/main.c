@@ -91,10 +91,10 @@ static void rtc_print(void)
     App_Printf("RTC,iso=20%02u-%02u-%02uT%02u:%02u:%02u\r\n",d.Year,d.Month,d.Date,t.Hours,t.Minutes,t.Seconds);
 }
 
-static volatile uint8_t data_logger_mode=0;
+volatile uint8_t data_logger_mode=0;
 static SemaphoreHandle_t uart_mutex;
-static char log_session[24]="unset";
-static volatile uint8_t log_label=255;
+char log_session[24]="unset";
+volatile uint8_t log_label=255;
 static void SensorTask(void *arg);
 static void UITask(void *arg);
 static void ConsoleTask(void *arg);
@@ -183,10 +183,10 @@ static void UITask(void *arg)
         uint8_t b=buttons();
         if(b && b!=prev){
             App_Printf("BUTTON,tick_ms=%lu,mask=%u\r\n",(unsigned long)HAL_GetTick(),b);
-            if((b&1U)!=0U){page++;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
-            if((b&2U)!=0U){if(page>0)page--;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
-            if((b&4U)!=0U){muted=!muted;App_Printf("UI,tick_ms=%lu,mute=%u\r\n",(unsigned long)HAL_GetTick(),muted);}
-            if((b&8U)!=0U)Board_SelfTest();
+            if(!data_logger_mode && (b&1U)!=0U){page++;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
+            if(!data_logger_mode && (b&2U)!=0U){if(page>0)page--;App_Printf("UI,tick_ms=%lu,page=%u\r\n",(unsigned long)HAL_GetTick(),page);}
+            if(!data_logger_mode && (b&4U)!=0U){muted=!muted;App_Printf("UI,tick_ms=%lu,mute=%u\r\n",(unsigned long)HAL_GetTick(),muted);}
+            if(!data_logger_mode && (b&8U)!=0U)Board_SelfTest();
         }
         prev=b; vTaskDelay(pdMS_TO_TICKS(25));
     }
@@ -203,12 +203,12 @@ static void ConsoleTask(void *arg)
           if(line[0]=='l'&&line[1]=='='){
             char *comma=strchr(line+2,',');
             if(comma){*comma=0; unsigned lab=(unsigned)atoi(comma+1); size_t n=strlen(line+2);
-              if(n>0&&n<sizeof(log_session)&&lab<=3){taskENTER_CRITICAL();memcpy(log_session,line+2,n+1);taskEXIT_CRITICAL();log_label=(uint8_t)lab;data_logger_mode=1;App_Printf("MODE,logger,session=%s,label=%u\r\n",log_session,lab);App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");}
+              if(n>0&&n<sizeof(log_session)&&lab<=3){taskENTER_CRITICAL();memcpy(log_session,line+2,n+1);taskEXIT_CRITICAL();log_label=(uint8_t)lab;data_logger_mode=1;led_set(LED_COLOR_RED,0);led_set(LED_COLOR_BLUE,0);buzzer_tone(0);matrix_clear();lcd_show_recording(log_session,log_label);App_Printf("MODE,logger,session=%s,label=%u\r\n",log_session,lab);App_Printf("OUTPUTS,tick_ms=%lu,lcd=dark_static,backlight=on,matrix=off\r\n",(unsigned long)HAL_GetTick());App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");}
               else App_Printf("ERROR,logger_command\r\n");
             } else App_Printf("ERROR,expected_l=session,label\r\n");
           } else if(line[0]=='t'&&line[1]=='='){if(rtc_ready&&rtc_set_from_text(line+2))App_Printf("RTC,set=ok\r\n");else App_Printf("RTC,set=error\r\n");}
-          else if(line[0]=='d'){data_logger_mode=0;App_Printf("MODE,diagnostic\r\n");}
-          else if(line[0]=='x'){data_logger_mode=0;App_Printf("MODE,stopped\r\n");}
+          else if(line[0]=='d'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,diagnostic\r\n");}
+          else if(line[0]=='x'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,stopped\r\n");}
           used=0;
         } else if(used<sizeof(line)-1) line[used++]=(char)ch;
       }
@@ -226,6 +226,7 @@ int main(void)
 {
     HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_Out_Init(); matrix_init(); rtc_init();
     if(!lcd_init()) App_Printf("INIT,lcd=error\r\n");
+    lcd_show_idle();
     App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=initialized\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
     uart_rx_stream=xStreamBufferCreate(128,1);
