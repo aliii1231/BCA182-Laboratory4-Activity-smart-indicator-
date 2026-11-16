@@ -92,6 +92,7 @@ static void rtc_print(void)
 }
 
 volatile uint8_t data_logger_mode=0;
+static uint32_t data_sequence=0;
 static SemaphoreHandle_t uart_mutex;
 char log_session[24]="unset";
 volatile uint8_t log_label=255;
@@ -140,7 +141,7 @@ static uint8_t buttons(void)
 
 static void SensorTask(void *arg)
 {
-    (void)arg; TickType_t last=xTaskGetTickCount(); uint32_t seq=0;
+    (void)arg; TickType_t last=xTaskGetTickCount();
     TickType_t last_rtc=last;
     char ts[16], hs[16];
     uint8_t imu_ok=0;
@@ -166,8 +167,8 @@ static void SensorTask(void *arg)
         if(imu_status==HAL_OK) App_Printf("IMU,tick_ms=%lu,ax_mg=%ld,ay_mg=%ld,az_mg=%ld,gx_mdps=%ld,gy_mdps=%ld,gz_mdps=%ld,imu_temp_cx100=%ld,imu_ok=1\r\n",(unsigned long)HAL_GetTick(),(long)imu.ax*1000L/16384L,(long)imu.ay*1000L/16384L,(long)imu.az*1000L/16384L,(long)imu.gx*1000L/131L,(long)imu.gy*1000L/131L,(long)imu.gz*1000L/131L,(long)imu.temp*1000L/3268L+2500L);
         else App_Printf("IMU,tick_ms=%lu,imu_ok=0\r\n",(unsigned long)HAL_GetTick());
         if(data_logger_mode){
-          if(aht_status==HAL_OK) App_Printf("DATA,%s,%u,%lu,%lu,%s,%s,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
-          else App_Printf("DATA,%s,%u,%lu,%lu,NA,NA,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)seq++,(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
+          if(aht_status==HAL_OK) App_Printf("DATA,%s,%u,%lu,%lu,%s,%s,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)data_sequence++,(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
+          else App_Printf("DATA,%s,%u,%lu,%lu,NA,NA,%u,%u,%u,%u\r\n",log_session,(unsigned)log_label,(unsigned long)data_sequence++,(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,s.button_mask);
         } else {
           if(aht_status==HAL_OK){fx(ts,sizeof ts,t,2);fx(hs,sizeof hs,h,2);App_Printf("SENSOR,tick_ms=%lu,temp_c=%s,rh_pct=%s,ambient_raw=%u,proximity_raw=%u,valid=0x%02X,icm_whoami=0x%02X,icm_ok=%u,interval_ms=1000,cal_temp_c=0,cal_rh_pct=0\r\n",(unsigned long)s.tick_ms,ts,hs,s.ambient_raw,s.proximity_raw,s.valid_mask,w,(icm==HAL_OK));}
           else App_Printf("SENSOR,tick_ms=%lu,temp_c=NA,rh_pct=NA,ambient_raw=%u,proximity_raw=%u,valid=0x%02X,aht_error=%u,icm_whoami=0x%02X,icm_ok=%u,interval_ms=1000,cal_temp_c=0,cal_rh_pct=0\r\n",(unsigned long)s.tick_ms,s.ambient_raw,s.proximity_raw,s.valid_mask,(unsigned)aht_status,w,(icm==HAL_OK));
@@ -203,7 +204,7 @@ static void ConsoleTask(void *arg)
           if(line[0]=='l'&&line[1]=='='){
             char *comma=strchr(line+2,',');
             if(comma){*comma=0; unsigned lab=(unsigned)atoi(comma+1); size_t n=strlen(line+2);
-              if(n>0&&n<sizeof(log_session)&&lab<=3){taskENTER_CRITICAL();memcpy(log_session,line+2,n+1);taskEXIT_CRITICAL();log_label=(uint8_t)lab;data_logger_mode=1;led_set(LED_COLOR_RED,0);led_set(LED_COLOR_BLUE,0);buzzer_tone(0);matrix_clear();lcd_show_recording(log_session,log_label);App_Printf("MODE,logger,session=%s,label=%u\r\n",log_session,lab);App_Printf("OUTPUTS,tick_ms=%lu,lcd=dark_static,backlight=on,matrix=off\r\n",(unsigned long)HAL_GetTick());App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");}
+              if(n>0&&n<sizeof(log_session)&&lab<=3){taskENTER_CRITICAL();memcpy(log_session,line+2,n+1);data_sequence=0;taskEXIT_CRITICAL();log_label=(uint8_t)lab;data_logger_mode=1;led_set(LED_COLOR_RED,0);led_set(LED_COLOR_BLUE,0);buzzer_tone(0);matrix_clear();lcd_show_recording(log_session,log_label);App_Printf("MODE,logger,session=%s,label=%u\r\n",log_session,lab);App_Printf("OUTPUTS,tick_ms=%lu,lcd=dark_static,backlight=on,matrix=off\r\n",(unsigned long)HAL_GetTick());App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");}
               else App_Printf("ERROR,logger_command\r\n");
             } else App_Printf("ERROR,expected_l=session,label\r\n");
           } else if(line[0]=='t'&&line[1]=='='){if(rtc_ready&&rtc_set_from_text(line+2))App_Printf("RTC,set=ok\r\n");else App_Printf("RTC,set=error\r\n");}
