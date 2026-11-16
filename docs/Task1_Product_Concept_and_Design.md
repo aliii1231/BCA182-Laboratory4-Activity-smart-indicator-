@@ -103,6 +103,7 @@ Starting values for tuning: T_HI about 38 C, RH_HI about 85 percent, L_OPEN abou
 ## 9. Known limitations and open items
 
 - The first bring-up reading was 32.96 C and 72.93 percent RH with `ambient_raw=10` and `proximity_raw=0`. These are uncalibrated and the temperature is probably elevated by board self-heating. A calibration offset (`cal_temp_c`) will be determined and documented.
-- The LCD backlight and LED matrix can leak light into the AP3216C. The effect will be measured and, if significant, the outputs will be dimmed or timed so they do not corrupt the light reading.
+- The LCD backlight stays on during operation and data collection and can leak light into the AP3216C. All sessions are recorded with the backlight on, a static dark screen, the LED matrix off and the buzzer muted. The runtime display uses the same dark background so that the state shown does not change the light reading. This coupling is tested in the Task 5 trials with live outputs.
+- Lighting from the board’s own outputs (LED matrix, LEDs and LCD colour bars during the self-test) was measured to raise `ambient_raw` from about 0 to about 55. Data is recorded with outputs in a fixed idle state, and the product’s runtime display must not use bright patterns. The product-level effect of output light is tested in the Task 5 trials.
 - The sensor interval is currently 1 s. A short lid opening produces only a few samples at this rate, so the sampling rate must be fixed before data collection.
 - The labels depend on how the states are simulated. The simulation procedure is part of the dataset documentation.

@@ -1,0 +1,7 @@
+﻿session_id,label,start_utc,seconds_requested,rows_kept,rows_with_NA,rows_skipped_warmup,bad_lines,notes
+
+python tools/capture_serial.py --port COM5 --session settle_check --label 3 --seconds 600 --notes "thermal settle check, box=A"
+probe_light,3,2026-11-16T11:13:10+00:00,27.0,26,0,2,0,"box fully closed, stimulus not applied (invalid probe)"
+probe_hand,3,2026-11-16T11:13:39+00:00,27.0,25,0,2,0,"box fully closed, stimulus not applied (invalid probe)"
+probe_light2,3,2026-11-16T11:32:47+00:00,27.0,25,0,2,0,"probe: lid fully open, fixed lamp 30 cm on sensor, no hand"
+probe_hand2,3,2026-11-16T11:37:27+00:00,27.0,25,0,2,0,"probe: lid fully open, same lamp, hand 2 cm above sensor"
