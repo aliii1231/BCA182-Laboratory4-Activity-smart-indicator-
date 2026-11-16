@@ -32,9 +32,9 @@ static void storage_diagnostics(void)
     hspi2_diag.Init.NSS=SPI_NSS_SOFT;hspi2_diag.Init.BaudRatePrescaler=SPI_BAUDRATEPRESCALER_64;hspi2_diag.Init.FirstBit=SPI_FIRSTBIT_MSB;
     hspi2_diag.Init.TIMode=SPI_TIMODE_DISABLE;hspi2_diag.Init.CRCCalculation=SPI_CRCCALCULATION_DISABLE;hspi2_diag.Init.CRCPolynomial=7;
     uint8_t id[3]={0};uint8_t tx[4]={0x9F,0xFF,0xFF,0xFF},rx[4]={0};
-    uint8_t flash_ok=0;
-    if(HAL_SPI_Init(&hspi2_diag)==HAL_OK){HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);HAL_StatusTypeDef st=HAL_SPI_TransmitReceive(&hspi2_diag,tx,rx,4,100);HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);if(st==HAL_OK){id[0]=rx[1];id[1]=rx[2];id[2]=rx[3];flash_ok=(id[0]==0xEF&&id[1]==0x40&&id[2]==0x18);}}
-    App_Printf("FLASH,id=%02X%02X%02X,ok=%u\r\n",id[0],id[1],id[2],flash_ok);
+    uint8_t flash_ok=0,capacity_mb=0;
+    if(HAL_SPI_Init(&hspi2_diag)==HAL_OK){HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_RESET);HAL_StatusTypeDef st=HAL_SPI_TransmitReceive(&hspi2_diag,tx,rx,4,100);HAL_GPIO_WritePin(GPIOB,GPIO_PIN_12,GPIO_PIN_SET);if(st==HAL_OK){id[0]=rx[1];id[1]=rx[2];id[2]=rx[3];if(id[0]==0xEF&&id[1]==0x40){if(id[2]==0x16){capacity_mb=4;flash_ok=1;}else if(id[2]==0x17){capacity_mb=8;flash_ok=1;}else if(id[2]==0x18){capacity_mb=16;flash_ok=1;}}}}
+    App_Printf("FLASH,id=%02X%02X%02X,capacity_mb=%u,ok=%u\r\n",id[0],id[1],id[2],capacity_mb,flash_ok);
 
     __HAL_RCC_SDIO_CLK_ENABLE();
     g.Pin=GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;g.Mode=GPIO_MODE_AF_PP;g.Pull=GPIO_PULLUP;g.Speed=GPIO_SPEED_FREQ_VERY_HIGH;g.Alternate=GPIO_AF12_SDIO;HAL_GPIO_Init(GPIOC,&g);
@@ -217,7 +217,7 @@ int main(void)
 {
     HAL_Init(); SystemClock_Config(); Board_Peripherals_Init(); Board_UI_Init(); Board_Out_Init(); matrix_init(); rtc_init();
     if(!lcd_init()) App_Printf("INIT,lcd=error\r\n");
-    App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=reset_only\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
+    App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=initialized\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
     if(uart_mutex==NULL || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();
     vTaskStartScheduler(); Error_Handler();
