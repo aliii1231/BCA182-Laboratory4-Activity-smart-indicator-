@@ -10,12 +10,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "semphr.h"
+#include "stream_buffer.h"
 
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
 static RTC_HandleTypeDef hrtc;
 static uint8_t rtc_ready=0;
+static StreamBufferHandle_t uart_rx_stream;
+static uint8_t uart_rx_byte;
 static SPI_HandleTypeDef hspi2_diag;
 static SD_HandleTypeDef hsd_diag;
 
@@ -194,7 +197,7 @@ static void ConsoleTask(void *arg)
     (void)arg; uint8_t ch; char line[40]; unsigned used=0;
     App_Printf("COMMANDS: d=diagnostic, l=<session>,<label 0-3> logger, x=stop logger\r\n");
     for(;;){
-      if(HAL_UART_Receive(&huart1,&ch,1,10)==HAL_OK){
+      if(xStreamBufferReceive(uart_rx_stream,&ch,1,portMAX_DELAY)==1){
         if(ch=='\r'||ch=='\n'){
           line[used]=0;
           if(line[0]=='l'&&line[1]=='='){
@@ -209,8 +212,14 @@ static void ConsoleTask(void *arg)
           used=0;
         } else if(used<sizeof(line)-1) line[used++]=(char)ch;
       }
-      vTaskDelay(pdMS_TO_TICKS(10));
     }
+}
+
+void USART1_IRQHandler(void){HAL_UART_IRQHandler(&huart1);}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if(huart->Instance==USART1){BaseType_t wake=pdFALSE;if(uart_rx_stream)xStreamBufferSendFromISR(uart_rx_stream,&uart_rx_byte,1,&wake);HAL_UART_Receive_IT(&huart1,&uart_rx_byte,1);portYIELD_FROM_ISR(wake);}
 }
 
 int main(void)
@@ -219,7 +228,10 @@ int main(void)
     if(!lcd_init()) App_Printf("INIT,lcd=error\r\n");
     App_Printf("INIT,uart=ok,i2c2=%s,aht_soft_i2c=ready,lcd=initialized\r\n",HAL_I2C_GetState(&hi2c2)==HAL_I2C_STATE_READY?"ready":"error");
     uart_mutex=xSemaphoreCreateMutex();
-    if(uart_mutex==NULL || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();
+    uart_rx_stream=xStreamBufferCreate(128,1);
+    HAL_NVIC_SetPriority(USART1_IRQn,configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY,0);
+    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    if(uart_mutex==NULL || uart_rx_stream==NULL || HAL_UART_Receive_IT(&huart1,&uart_rx_byte,1)!=HAL_OK || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();
     vTaskStartScheduler(); Error_Handler();
 }
 
