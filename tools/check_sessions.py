@@ -9,15 +9,39 @@ import csv
 import glob
 import os
 
-BASE_T = 32.3      # deg C, closed box, outputs idle
-BASE_RH = 77.0     # percent RH, closed box, outputs idle
+BASE_T = 32.3      # fallback only, used until a train_s0_/test_s0_ session exists
+BASE_RH = 77.0     # fallback only
 MIN_ROWS = 56      # a 62 s recording minus 2 warm-up rows is about 60
 
-for path in sorted(glob.glob("data/raw/*.csv")):
+def median(v):
+    v = sorted(v)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def load(path):
+    return list(csv.DictReader(open(path)))
+
+
+paths = [p for p in sorted(glob.glob("data/raw/*.csv"))
+         if os.path.basename(p).startswith(("train_", "test_"))]
+
+# Baseline = median of the State 0 sessions recorded so far (the room drifts,
+# so a fixed constant is not reliable).
+t0, h0 = [], []
+for p in paths:
+    rs = load(p)
+    if rs and {r["label"] for r in rs} == {"0"}:
+        t0 += [float(r["temp_c"]) for r in rs if r["temp_c"] != "NA"]
+        h0 += [float(r["rh_pct"]) for r in rs if r["rh_pct"] != "NA"]
+if t0 and h0:
+    BASE_T, BASE_RH = median(t0), median(h0)
+print(f"baseline used: T={BASE_T:.2f} C, RH={BASE_RH:.2f} % "
+      f"({'from State 0 sessions' if t0 else 'fallback constants'})")
+
+for path in paths:
     name = os.path.basename(path)[:-4]
-    if not (name.startswith("train_") or name.startswith("test_")):
-        continue
-    rows = list(csv.DictReader(open(path)))
+    rows = load(path)
     if not rows:
         print(f"{name:14s} NO ROWS")
         continue
