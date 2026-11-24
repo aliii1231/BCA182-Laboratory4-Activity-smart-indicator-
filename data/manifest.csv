@@ -1,4 +1,4 @@
-﻿session_id,label,start_utc,seconds_requested,rows_kept,rows_with_NA,rows_skipped_warmup,bad_lines,notes
+session_id,label,start_utc,seconds_requested,rows_kept,rows_with_NA,rows_skipped_warmup,bad_lines,notes
 settle_check,3,,600.0,598,0,2,0,"thermal settle check, box=A (row added manually, start time not recorded)"
 probe_dark,3,,27.0,25,0,2,0,"probe: lid closed, outputs idle (row added manually, start time not recorded)"
 probe_light,3,2026-11-16T11:13:10+00:00,27.0,26,0,2,0,"box fully closed, stimulus not applied (invalid probe)"
@@ -9,22 +9,18 @@ train_s1_1,1,2026-11-16T14:15:01+00:00,62.0,60,0,2,0,backlight=on dark_static bo
 train_s1_1,1,2026-11-16T14:24:52+00:00,62.0,60,0,2,0,backlight=on dark_static box=A
 train_s1_1,1,2026-11-16T14:31:11+00:00,62.0,60,0,2,0,backlight=on dark_static box=A
 train_s2_1,2,2026-11-16T14:35:01+00:00,62.0,60,0,2,0,backlight=on dark_static box=A
-
 train_s0_2,0,2026-11-17T04:36:02+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | room lights off
 train_s1_2,1,2026-11-17T04:42:09+00:00,62.0,60,0,2,0,"backlight=on dark_static box=A | flashlight 5 cm, hand in 3 openings"
 train_s2_2,2,2026-11-17T04:45:12+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | breath only
 train_s0_3,0,2026-11-17T04:59:45+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | room lights on
 train_s1_3,1,2026-11-17T05:01:10+00:00,62.0,60,0,2,0,"backlight=on dark_static box=A | flashlight 10 cm, no hand"
 train_s0_3,0,2026-11-17T05:14:22+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | room lights on
-
-
-
 train_s0_3,0,2026-11-18T06:28:22+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | room lights on
 train_s2_3,2,2026-11-18T06:58:46+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | warm water bottle
 train_s2_4,2,2026-11-18T07:12:31+00:00,62.0,60,0,2,0,"backlight=on dark_static box=A | breath, then lid open under the flashlight"
-
-
  aimed at sensor, hand in every lid opening, 5s cycle"
 train_s1_4,1,2026-11-24T02:23:32+00:00,62.0,60,0,2,0,"backlight=on dark_static box=A | flashlight 10 cm, lid cycle 5s/5s, hand 2 cm in odd openings"
-
 train_s0_4,0,2026-11-24T02:51:02+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | room lights on
+train_s0_5,0,2026-11-24T03:16:57+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | fresh baseline for train_s2_5
+train_s2_5,2,2026-11-24T03:37:39+00:00,62.0,60,0,2,0,"backlight=on dark_static box=A | damp cloth 15 cm, lid on"
+train_s0_1,0,2026-11-16T14:12:20+00:00,62.0,60,0,,,start_utc reconstructed from file modification time

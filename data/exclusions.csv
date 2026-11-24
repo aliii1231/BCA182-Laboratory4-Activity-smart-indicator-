@@ -1,1 +1,5 @@
-
+session_id,window,reason
+train_s1_2,w2,"no lid opening or hand in window"
+train_s2_2,w1,"humidity condition not yet reached (+1.2 %)"
+train_s2_3,all,"warm bottle near sensor: proximity 110-120 in all windows (normal 8-38)"
+train_s2_4,all,"humidity 80.5-80.9 % is below the fresh State 0 baseline; risk condition not established"
