@@ -27,3 +27,9 @@ train_s0_1,0,2026-11-16T14:12:20+00:00,62.0,60,0,,,start_utc reconstructed from 
 train_s0_6,0,2026-11-24T04:04:43+00:00,62.0,60,0,2,0,backlight=on dark_static box=A | fresh baseline
 train_s1_6,1,2026-11-24T04:12:37+00:00,122.0,120,0,2,0,"backlight=on dark_static box=A | flashlight 10 cm, lid cycle 5s/5s, hand in odd openings, 2 min"
 train_s2_6,2,2026-11-24T04:34:56+00:00,142.0,140,0,2,0,"backlight=on dark_static box=A | damp cloth 15 cm, lid on, 2.4 min"
+test_s0_1,0,2026-11-25T06:13:55+00:00,62.0,60,0,2,0,TEST backlight=on dark_static box=A | lights on | fresh baseline
+test_s1_1,1,2026-11-25T06:28:09+00:00,62.0,60,0,2,0,"TEST backlight=on dark_static box=A | lights on | flashlight 10 cm, lid cycle 5s/5s, hand in odd openings"
+test_s2_1,2,2026-11-25T06:48:16+00:00,62.0,60,0,2,0,"TEST backlight=on dark_static box=A | lights on | damp cloth 15 cm, lid on"
+test_s0_2,0,2026-11-25T06:57:19+00:00,62.0,60,0,2,0,TEST backlight=on dark_static box=A | lights off | fresh baseline
+test_s1_2,1,2026-11-25T06:59:43+00:00,62.0,60,0,2,0,"TEST backlight=on dark_static box=A | lights off | flashlight 10 cm, lid cycle 5s/5s, hand in odd openings"
+test_s2_2,2,2026-11-25T07:04:47+00:00,62.0,60,0,2,0,"TEST backlight=on dark_static box=A | lights off | damp cloth 15 cm, lid on"

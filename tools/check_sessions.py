@@ -7,12 +7,45 @@ of its (non-excluded) windows support its label. Sessions and windows listed in
 data/exclusions.csv are shown as EXCLUDED and left out of the counts.
 Thresholds are PROVISIONAL: RH +4 %, T +1.5 C, ambient_raw 20, proximity_raw 100.
 """
+import argparse
 import qc_common as q
 
 MIN_ROWS = 56
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--faults-only", action="store_true",
+                        help="report data-quality faults for test sessions only")
+    args = parser.parse_args()
+
     data, times, excl = q.load_all(), q.manifest_times(), q.load_exclusions()
+    if args.faults_only:
+        state_windows = {}
+        for name, rows in data.items():
+            if not name.startswith("test_"):
+                continue
+            v = q.valid(rows)
+            labels = {r["label"] for r in rows}
+            label = int(next(iter(labels))) if len(labels) == 1 else -1
+            e = excl.get(name, {"all": None, "wins": {}})
+            if e["all"]:
+                continue
+
+            ws = [w for i, w in enumerate(q.windows(v), 1) if i not in e["wins"]]
+            faults = []
+            if len(rows) < MIN_ROWS: faults.append("SHORT")
+            if len(v) != len(rows): faults.append("NA_ROWS")
+            if len(labels) != 1: faults.append("MIXED_LABELS")
+            if any(r["buttons"] != "0" for r in rows): faults.append("BUTTON_PRESSED")
+            print(f"{name}  L{label}  rows={len(rows)}  windows={len(ws)}  faults: "
+                  f"{', '.join(faults) if faults else 'none'}")
+            state_windows[label] = state_windows.get(label, 0) + len(ws)
+
+        print("\ntest windows per state after exclusions:")
+        for label, n in sorted(state_windows.items()):
+            print(f"  State {label}: {n}")
+        raise SystemExit(0)
+
     missing = [n for n in data if n not in times]
     print(f"manifest start times found for {len(data) - len(missing)}/{len(data)} sessions"
           + (f" (missing: {', '.join(missing)})" if missing else ""))
