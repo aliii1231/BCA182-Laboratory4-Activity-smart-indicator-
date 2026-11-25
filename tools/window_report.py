@@ -8,13 +8,17 @@ result differs from the label with "!".
 import qc_common as q
 
 if __name__ == "__main__":
-    data, times = q.load_all(), q.manifest_times()
+    data, times, excl = q.load_all(), q.manifest_times(), q.load_exclusions()
     totals = {}
     for name, rows in data.items():
         v = q.valid(rows)
         if not v:
             continue
         label = int(v[0]["label"])
+        e = excl.get(name, {"all": None, "wins": {}})
+        if e["all"]:
+            print(f"{name}  EXCLUDED: {e['all']}")
+            continue
         base, src, gap = q.baseline_for(name, data, times)
         gtxt = f", {gap:.0f} min away" if gap else ""
         print(f"{name}  (baseline T={base[0]:.2f} RH={base[1]:.2f}; {src}{gtxt})")
@@ -27,6 +31,9 @@ if __name__ == "__main__":
             if not good and label == 2:
                 print(f"  w{i} T {t:5.2f} RH {h:5.1f} (d {h - base[1]:+5.1f}) "
                       f"amb_max {a:4d} prox_max {p:4d} rule=? (needs fresh State 0)")
+                continue
+            if i in e["wins"]:
+                print(f"  w{i} EXCLUDED: {e['wins'][i]}")
                 continue
             bad = pred != label
             tot = totals.setdefault(label, [0, 0])

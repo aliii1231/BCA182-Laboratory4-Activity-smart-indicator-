@@ -7,7 +7,7 @@ import re
 
 WIN, RH_D, T_D, AMB, PROX = 10, 4.0, 1.5, 20, 100     # PROVISIONAL thresholds
 FALLBACK = (32.3, 77.0)
-OLD_GAP_MIN = 35
+OLD_GAP_MIN = 30
 
 
 def mean(v):
@@ -107,3 +107,28 @@ def supports(label, w, base, ok_baseline=True):
     if label == 1:
         return access and not risk
     return not risk and not access
+
+
+def load_exclusions(path="data/exclusions.csv"):
+    """session_id -> {"all": reason or None, "wins": {window_number: reason}}.
+    Rows: session_id,window,reason with window = all | w3 | w2-w6 | note (ignored)."""
+    ex = {}
+    if not os.path.exists(path):
+        return ex
+    for r in csv.DictReader(open(path, newline="", encoding="utf-8-sig")):
+        sid = (r.get("session_id") or "").strip()
+        w = (r.get("window") or "").strip().lower()
+        reason = (r.get("reason") or "").strip()
+        if not sid or w in ("", "note"):
+            continue
+        e = ex.setdefault(sid, {"all": None, "wins": {}})
+        if w == "all":
+            e["all"] = reason
+            continue
+        m = re.match(r"w(\d+)(?:-w?(\d+))?$", w)
+        if m:
+            a = int(m.group(1))
+            b = int(m.group(2) or a)
+            for i in range(a, b + 1):
+                e["wins"][i] = reason
+    return ex
