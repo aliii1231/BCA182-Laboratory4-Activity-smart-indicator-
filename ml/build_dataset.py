@@ -4,6 +4,7 @@ import glob
 import json
 import os
 import sys
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -47,9 +48,28 @@ def features(rows):
 
 
 def main():
-    exclusions = q.load_exclusions()
+    exclusions_path = os.path.join("data", "exclusions.csv")
+    if not os.path.isfile(exclusions_path):
+        raise SystemExit(f"Error: required exclusions file is missing: {exclusions_path}")
+    exclusions = q.load_exclusions(exclusions_path)
+    if not exclusions:
+        # DictReader treats a leading blank line as the CSV header. Normalize a
+        # temporary copy so the QC helper can still parse the supplied file.
+        with open(exclusions_path, encoding="utf-8-sig") as source:
+            contents = source.read().lstrip("\r\n")
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
+                                         suffix=".csv", delete=False) as normalized:
+            normalized.write(contents)
+            normalized_path = normalized.name
+        try:
+            exclusions = q.load_exclusions(normalized_path)
+        finally:
+            os.unlink(normalized_path)
     records = {"train": [], "test": []}
     counts = {"train": {}, "test": {}}
+    session_lines = []
+    excluded_lines = []
+    reported_exclusions = set()
     for split in ("train", "test"):
         for path in sorted(glob.glob(os.path.join("data", "raw", f"{split}_*.csv"))):
             rows = q.load(path)
@@ -57,11 +77,20 @@ def main():
                 continue
             name = os.path.basename(path)[:-4]
             excluded = exclusions.get(name, {"all": None, "wins": {}})
-            if excluded["all"]:
-                continue
             valid = q.valid(rows)
+            total_windows = len(valid) // q.WIN
+            if excluded["all"]:
+                session_lines.append(f"{name}: windows built=0, windows excluded={total_windows}")
+                excluded_lines.append(f"{name} all: {excluded['all']}")
+                reported_exclusions.add((name, "all"))
+                continue
+            excluded_numbers = sorted(n for n in excluded["wins"] if 1 <= n <= total_windows)
+            for number in excluded_numbers:
+                excluded_lines.append(f"{name} w{number}: {excluded['wins'][number]}")
+                reported_exclusions.add((name, f"w{number}"))
             label = int(rows[0]["label"])
-            for number in range(1, len(valid) // q.WIN + 1):
+            built = 0
+            for number in range(1, total_windows + 1):
                 if number in excluded["wins"]:
                     continue
                 window_rows = valid[(number - 1) * q.WIN:number * q.WIN]
@@ -69,6 +98,16 @@ def main():
                           "label": label, **features(window_rows)}
                 records[split].append(record)
                 counts[split][label] = counts[split].get(label, 0) + 1
+                built += 1
+            session_lines.append(
+                f"{name}: windows built={built}, windows excluded={len(excluded_numbers)}")
+
+    for name, excluded in sorted(exclusions.items()):
+        if excluded["all"] and (name, "all") not in reported_exclusions:
+            excluded_lines.append(f"{name} all: {excluded['all']}")
+        for number, reason in sorted(excluded["wins"].items()):
+            if (name, f"w{number}") not in reported_exclusions:
+                excluded_lines.append(f"{name} w{number}: {reason}")
 
     os.makedirs("ml/out", exist_ok=True)
     for split in ("train", "test"):
@@ -79,15 +118,23 @@ def main():
                    "definitions": DESCRIPTIONS}, f, indent=2)
         f.write("\n")
 
-    print("windows per split and state:")
+    report = ["# Dataset build report", "", "## Per session", "", *session_lines,
+              "", "## Excluded sessions and windows", ""]
+    report.extend(excluded_lines if excluded_lines else ["None."])
+    report.extend(["", "## Windows per split and state", "", "| Split | State | Windows |",
+                   "|---|---:|---:|"])
     errors = []
     for split in ("train", "test"):
         minimum = 30 if split == "train" else 10
-        for state in sorted(counts[split]):
-            count = counts[split][state]
-            print(f"  {split} State {state}: {count}")
+        for state in (0, 1, 2):
+            count = counts[split].get(state, 0)
+            report.append(f"| {split} | {state} | {count} |")
             if count < minimum:
                 errors.append(f"{split} State {state} has {count} windows; requires {minimum}")
+    report_text = "\n".join(report) + "\n"
+    print(report_text, end="")
+    with open("ml/out/dataset_report.md", "w", encoding="utf-8") as f:
+        f.write(report_text)
     if errors:
         raise SystemExit("\n".join(errors))
 
