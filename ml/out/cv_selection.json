@@ -1,0 +1,28 @@
+{
+  "selected_model": {
+    "family": "logistic",
+    "hyperparameters": {
+      "C": 0.03,
+      "max_iter": 2000
+    }
+  },
+  "selected_cv_macro_f1": 0.9123233041143489,
+  "best_tree": {
+    "max_depth": 2,
+    "min_samples_leaf": 1
+  },
+  "rule_cv_macro_f1": 0.8745629129224821,
+  "feature_order": [
+    "amb_mean",
+    "amb_max",
+    "amb_std",
+    "prox_mean",
+    "prox_max",
+    "prox_min",
+    "prox_std",
+    "temp_mean",
+    "rh_mean",
+    "temp_delta",
+    "rh_delta"
+  ]
+}

@@ -26,6 +26,7 @@ TEST_PATH = OUT / "test_windows.csv"
 FEATURES_PATH = OUT / "features.json"
 CV_PATH = OUT / "cv_results.md"
 RESULTS_PATH = OUT / "test_results.md"
+SELECTION_PATH = OUT / "cv_selection.json"
 LABELS = [0, 1, 2]
 DEPTHS = [2, 3, 4, 5]
 LEAVES = [1, 2, 3, 5]
@@ -145,7 +146,7 @@ def cv_only():
 
         for depth, leaf in itertools.product(DEPTHS, LEAVES):
             yield f"DecisionTree depth={depth}, leaf={leaf}", lambda d=depth, l=leaf: DecisionTreeClassifier(max_depth=d, min_samples_leaf=l, random_state=0), "tree"
-        for c in (0.1, 1, 10):
+        for c in (0.01, 0.03, 0.1, 0.3, 1):
             yield f"LogisticRegression C={c}", lambda c=c: logistic_model(c), "logistic"
         for estimators, depth in itertools.product((10, 20), (3, 4)):
             yield f"RandomForest n_estimators={estimators}, depth={depth}", lambda n=estimators, d=depth: RandomForestClassifier(n_estimators=n, max_depth=d, random_state=0), "forest"
@@ -168,20 +169,39 @@ def cv_only():
             subset_matrix, subset_labels, subset_group_values))
         for candidate_name, factory, kind in candidates():
             truths, predictions = [], []
+            oof = np.empty(len(subset_labels), dtype=int)
             for train_i, val_i in subset_folds:
                 estimator = factory()
                 estimator.fit(subset_matrix[train_i], subset_labels[train_i])
                 truths.extend(subset_labels[val_i])
-                predictions.extend(estimator.predict(subset_matrix[val_i]))
+                fold_pred = estimator.predict(subset_matrix[val_i])
+                predictions.extend(fold_pred)
+                oof[val_i] = fold_pred
             final_estimator = factory().fit(subset_matrix, subset_labels)
             candidate_rows.append({"candidate": candidate_name, "features": subset_name,
+                                   "kind": kind,
                                    "f1": f1_score(truths, predictions, labels=LABELS,
                                                    average="macro", zero_division=0),
                                    "accuracy": accuracy_score(truths, predictions),
                                    "size": model_size(final_estimator, kind),
+                                   "oof": oof if subset_name == "absolute" else None,
                                    "size_kind": {"tree": "nodes", "forest": "total nodes",
                                                  "logistic": "coefficients"}[kind]})
-    best_candidate = max(candidate_rows, key=lambda row: row["f1"])
+    full_set_candidates = [row for row in candidate_rows if row["features"] == "absolute"]
+    best_candidate = max(full_set_candidates, key=lambda row: row["f1"])
+    selected_oof = best_candidate["oof"]
+    selected_family = best_candidate["kind"]
+    best_params = {}
+    if selected_family == "tree":
+        import re
+        found = re.search(r"depth=(\d+), leaf=(\d+)", best_candidate["candidate"])
+        best_params = {"max_depth": int(found.group(1)), "min_samples_leaf": int(found.group(2))}
+    elif selected_family == "logistic":
+        best_params = {"C": float(best_candidate["candidate"].split("=")[-1]), "max_iter": 2000}
+    else:
+        import re
+        found = re.search(r"n_estimators=(\d+), depth=(\d+)", best_candidate["candidate"])
+        best_params = {"n_estimators": int(found.group(1)), "max_depth": int(found.group(2)), "random_state": 0}
     best_tree = DecisionTreeClassifier(max_depth=chosen["depth"],
                                        min_samples_leaf=chosen["leaf"], random_state=0)
     best_tree.fit(absolute_x, y)
@@ -196,9 +216,18 @@ def cv_only():
               "All scores use leave-one-session-out CV on training data. The absolute baseline-subset rows provide like-for-like comparisons with relative-feature rows.", "",
               "| Candidate | Feature set | Macro-F1 | Accuracy | Model size |", "|---|---|---:|---:|---:|"]
     lines += [f"| {r['candidate']} | {r['features']} | {r['f1']:.6f} | {r['accuracy']:.6f} | {r['size']} {r['size_kind']} |" for r in candidate_rows]
-    lines += ["", f"Best candidate: {best_candidate['candidate']} using {best_candidate['features']} features, macro-F1={best_candidate['f1']:.6f}, accuracy={best_candidate['accuracy']:.6f}. Chosen on training data only.",
+    lines += ["", "## Full-set candidates (selection set)", "",
+              "Candidates here use all training windows and the 11 absolute features. The baseline rule is reported separately and is never selected as a learned model.", "",
+              "| Candidate | Macro-F1 | Accuracy | Model size |", "|---|---:|---:|---:|"]
+    lines += [f"| {r['candidate']} | {r['f1']:.6f} | {r['accuracy']:.6f} | {r['size']} {r['size_kind']} |" for r in full_set_candidates]
+    lines += ["", "## Relative vs absolute features (same subset, diagnostic only)", "",
+              "These baseline-subset comparisons are diagnostic only and are excluded from model selection.", "",
+              "| Candidate | Feature set | Macro-F1 | Accuracy | Model size |", "|---|---|---:|---:|---:|"]
+    diagnostics = [r for r in candidate_rows if r["features"] != "absolute"]
+    lines += [f"| {r['candidate']} | {r['features']} | {r['f1']:.6f} | {r['accuracy']:.6f} | {r['size']} {r['size_kind']} |" for r in diagnostics]
+    lines += ["", f"Best learned candidate: {best_candidate['candidate']} (macro-F1={best_candidate['f1']:.6f}, accuracy={best_candidate['accuracy']:.6f}); selected on full training data only.",
               "", "## Per-session leave-one-session-out results", "",
-              "| Session | Label | Windows | Rule correct | Best tree correct |", "|---|---:|---:|---:|---:|"]
+              "| Session | Label | Windows | Rule correct | Best-tree correct | Selected-model correct |", "|---|---:|---:|---:|---:|---:|"]
     session_results = []
     for session in sorted(frame["session_id"].unique()):
         idx = np.flatnonzero(groups == session)
@@ -206,26 +235,50 @@ def cv_only():
         label = labels[0] if len(labels) == 1 else ",".join(map(str, labels))
         rule_ok = int(np.sum(rule_oof[idx] == y[idx]))
         tree_ok = int(np.sum(best_tree_oof[idx] == y[idx]))
+        selected_ok = int(np.sum(selected_oof[idx] == y[idx]))
         session_results.append({"session": session, "label": label, "windows": len(idx),
-                                "rule_correct": rule_ok, "tree_correct": tree_ok})
-        lines.append(f"| {session} | {label} | {len(idx)} | {rule_ok} | {tree_ok} |")
+                                "rule_correct": rule_ok, "tree_correct": tree_ok,
+                                "selected_correct": selected_ok})
+        lines.append(f"| {session} | {label} | {len(idx)} | {rule_ok} | {tree_ok} | {selected_ok} |")
+    for title, prediction in (("Rule", rule_oof), ("Selected model", selected_oof)):
+        cm = confusion_matrix(y, prediction, labels=LABELS)
+        precision, recall, _, _ = precision_recall_fscore_support(y, prediction, labels=LABELS, zero_division=0)
+        lines += ["", f"## Pooled LOSO confusion matrix: {title}", "",
+                  "Rows=true, columns=predicted (states 0, 1, 2).", "",
+                  "| True \\ Predicted | 0 | 1 | 2 |", "|---:|---:|---:|---:|"]
+        lines += [f"| {state} | " + " | ".join(map(str, cm[state])) + " |" for state in LABELS]
+        lines += ["", "| State | Precision | Recall |", "|---:|---:|---:|"]
+        lines += [f"| {state} | {precision[state]:.6f} | {recall[state]:.6f} |" for state in LABELS]
     lines += ["", "## Chosen tree fitted on all training data", "", "```text",
               export_text(best_tree, feature_names=absolute_features).rstrip(), "```", "",
               "<!-- cv_metadata: " + json.dumps({"chosen": {"max_depth": chosen["depth"],
                                                               "min_samples_leaf": chosen["leaf"]}}) + " -->", ""]
     OUT.mkdir(parents=True, exist_ok=True)
     CV_PATH.write_text("\n".join(lines), encoding="utf-8")
+    SELECTION_PATH.write_text(json.dumps({"selected_model": {"family": selected_family,
+                                                               "hyperparameters": best_params},
+                                         "selected_cv_macro_f1": best_candidate["f1"],
+                                         "best_tree": {"max_depth": chosen["depth"],
+                                                       "min_samples_leaf": chosen["leaf"]},
+                                         "rule_cv_macro_f1": base_f1,
+                                         "feature_order": absolute_features}, indent=2) + "\n", encoding="utf-8")
     print(f"Baseline rule CV macro-F1={base_f1:.6f}, accuracy={base_acc:.6f}")
     for r in model_scores:
         print(f"max_depth={r['depth']} min_samples_leaf={r['leaf']}: macro-F1={r['f1']:.6f}, accuracy={r['accuracy']:.6f}")
     print(f"Chosen tree: max_depth={chosen['depth']}, min_samples_leaf={chosen['leaf']}")
-    for r in candidate_rows:
+    for r in full_set_candidates:
         print(f"{r['candidate']} [{r['features']}]: macro-F1={r['f1']:.6f}, accuracy={r['accuracy']:.6f}, model_size={r['size']} {r['size_kind']}")
-    print(f"Best candidate: {best_candidate['candidate']} [{best_candidate['features']}], macro-F1={best_candidate['f1']:.6f}, accuracy={best_candidate['accuracy']:.6f}. Chosen on training data only.")
+    print("Relative vs absolute features (same subset, diagnostic only):")
+    for r in diagnostics:
+        print(f"{r['candidate']} [{r['features']}]: macro-F1={r['f1']:.6f}, accuracy={r['accuracy']:.6f}, model_size={r['size']} {r['size_kind']}")
+    print(f"Best learned candidate: {best_candidate['candidate']}, macro-F1={best_candidate['f1']:.6f}, accuracy={best_candidate['accuracy']:.6f}. Selected on full training data only.")
     print("Per-session leave-one-session-out results:")
-    print("Session | Label | Windows | Rule correct | Best tree correct")
+    print("Session | Label | Windows | Rule correct | Best-tree correct | Selected-model correct")
     for r in session_results:
-        print(f"{r['session']} | {r['label']} | {r['windows']} | {r['rule_correct']} | {r['tree_correct']}")
+        print(f"{r['session']} | {r['label']} | {r['windows']} | {r['rule_correct']} | {r['tree_correct']} | {r['selected_correct']}")
+    for title, prediction in (("Rule", rule_oof), ("Selected model", selected_oof)):
+        print(f"LOSO confusion matrix ({title}; rows=true, columns=predicted):")
+        print(confusion_matrix(y, prediction, labels=LABELS))
     print(export_text(best_tree, feature_names=absolute_features))
 
 
@@ -234,32 +287,42 @@ def final(force):
         raise SystemExit("Refusing final evaluation: ml/out/test_results.md already exists. Use --force-reeval to re-evaluate.")
     if force:
         print("WARNING: re-evaluating invalidates the held-out claim.")
-    if not CV_PATH.exists():
-        raise SystemExit("Run --cv-only successfully before --final.")
-    content = CV_PATH.read_text(encoding="utf-8")
-    marker = next((line for line in content.splitlines() if line.startswith("<!-- cv_metadata: ")), None)
-    if marker is None:
-        raise SystemExit("cv_results.md has no valid --cv-only metadata; run --cv-only first.")
-    chosen = json.loads(marker[len("<!-- cv_metadata: "):-len(" -->")])["chosen"]
+    if not SELECTION_PATH.exists():
+        raise SystemExit("Run --cv-only successfully before --final; ml/out/cv_selection.json is missing.")
+    selection = json.loads(SELECTION_PATH.read_text(encoding="utf-8"))
     features = load_features()
     absolute_features = [name for name in features if name not in ("temp_rel", "rh_rel")]
     frame, x, y = load_train(absolute_features)
     thresholds, _ = fit_rule(frame, y)
-    model = DecisionTreeClassifier(max_depth=chosen["max_depth"],
-                                   min_samples_leaf=chosen["min_samples_leaf"], random_state=0)
-    model.fit(x, y)
-    frozen = {"features": absolute_features, "hyperparameters": chosen, "rule_thresholds": thresholds,
+    tree_params = selection["best_tree"]
+    tree = DecisionTreeClassifier(**tree_params, random_state=0).fit(x, y)
+    chosen = selection["selected_model"]
+    family, params = chosen["family"], chosen["hyperparameters"]
+    if family == "tree":
+        selected = DecisionTreeClassifier(**params, random_state=0)
+    elif family == "logistic":
+        try:
+            classifier = LogisticRegression(**params, solver="lbfgs", multi_class="multinomial")
+        except TypeError:
+            classifier = LogisticRegression(**params, solver="lbfgs")
+        selected = make_pipeline(StandardScaler(), classifier)
+    else:
+        selected = RandomForestClassifier(**params)
+    selected.fit(x, y)
+    frozen = {"features": absolute_features, "selected_model": chosen,
+              "best_tree": tree_params, "rule_thresholds": thresholds,
               "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "timestamp_utc": datetime.now(timezone.utc).isoformat(),
               "sklearn_version": sklearn.__version__, "numpy_version": np.__version__}
-    joblib.dump({"model": model, "features": absolute_features}, OUT / "model.joblib")
+    joblib.dump({"selected_model": selected, "tree": tree, "features": absolute_features}, OUT / "model.joblib")
     (OUT / "frozen.json").write_text(json.dumps(frozen, indent=2) + "\n", encoding="utf-8")
 
     # First access to held-out data occurs only after model and metadata are frozen.
     test = pd.read_csv(TEST_PATH)
     truth = test["label"].to_numpy(dtype=int)
     test_x = test[absolute_features].to_numpy(dtype=np.float64)
-    outputs = [("Rule", rule_predict(test, thresholds)), ("Tree", model.predict(test_x))]
+    outputs = [("Rule", rule_predict(test, thresholds)), ("Tree", tree.predict(test_x)),
+               ("Selected model", selected.predict(test_x))]
     report = ["# Held-out test results", "", f"Test window count: {len(test)}", ""]
     for title, pred in outputs:
         cm = confusion_matrix(truth, pred, labels=LABELS)
