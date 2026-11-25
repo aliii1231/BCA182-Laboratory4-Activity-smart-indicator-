@@ -344,16 +344,76 @@ def final(force):
     RESULTS_PATH.write_text("\n".join(report), encoding="utf-8")
 
 
+def explain():
+    selection = json.loads(SELECTION_PATH.read_text(encoding="utf-8"))
+    selected = selection["selected_model"]
+    if selected["family"] != "logistic":
+        raise SystemExit("--explain currently requires a selected LogisticRegression model.")
+    features = selection.get("feature_order") or [
+        name for name in load_features() if name not in ("temp_rel", "rh_rel")]
+    frame, x, y = load_train(features)  # Deliberately never opens TEST_PATH.
+    c_value = float(selected["hyperparameters"]["C"])
+    try:
+        classifier = LogisticRegression(C=c_value, solver="lbfgs",
+                                        multi_class="multinomial", max_iter=2000)
+    except TypeError:  # Newer sklearn versions use multinomial automatically for multiclass.
+        classifier = LogisticRegression(C=c_value, solver="lbfgs", max_iter=2000)
+    model = make_pipeline(StandardScaler(), classifier)
+    model.fit(x, y)
+    scaler, fitted = model[0], model[-1]
+    classes = fitted.classes_
+    pred = model.predict(x)
+    cm = confusion_matrix(y, pred, labels=classes)
+
+    lines = ["# Logistic regression model explanation", "",
+             f"Training windows: {len(frame)}", f"Selected C: {c_value}",
+             f"Class order: {', '.join(map(str, classes))}", "",
+             "## StandardScaler parameters", "",
+             "| Feature | Mean | Scale |", "|---|---:|---:|"]
+    lines += [f"| {feature} | {mean:.10g} | {scale:.10g} |"
+              for feature, mean, scale in zip(features, scaler.mean_, scaler.scale_)]
+    lines += ["", "## Intercepts by class", "", "| Class | Intercept |", "|---:|---:|"]
+    lines += [f"| {label} | {intercept:.10g} |" for label, intercept in zip(classes, fitted.intercept_)]
+    lines += ["", "## Coefficients on standardized feature scale", "",
+              "| Feature | " + " | ".join(f"Class {label}" for label in classes) + " |",
+              "|---|" + "---:|" * len(classes)]
+    lines += [f"| {feature} | " + " | ".join(f"{value:.10g}" for value in row) + " |"
+              for feature, row in zip(features, fitted.coef_.T)]
+    lines += ["", "## Features ranked by absolute coefficient", ""]
+    for class_index, label in enumerate(classes):
+        ranked = sorted(zip(features, fitted.coef_[class_index]),
+                        key=lambda pair: abs(pair[1]), reverse=True)
+        lines += [f"### Class {label}", "", "| Rank | Feature | Coefficient | Absolute coefficient |",
+                  "|---:|---|---:|---:|"]
+        lines += [f"| {rank} | {feature} | {value:.10g} | {abs(value):.10g} |"
+                  for rank, (feature, value) in enumerate(ranked, 1)]
+        lines.append("")
+    lines += ["## Training-set performance", "",
+              f"Accuracy: {accuracy_score(y, pred):.6f}", "",
+              "Confusion matrix (rows=true, columns=predicted; class order above):", "",
+              "| True \\ Predicted | " + " | ".join(map(str, classes)) + " |",
+              "|---:|" + "---:|" * len(classes)]
+    lines += [f"| {label} | " + " | ".join(map(str, cm[index])) + " |"
+              for index, label in enumerate(classes)]
+    content = "\n".join(lines) + "\n"
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "model_explain.md").write_text(content, encoding="utf-8")
+    print(content, end="")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--cv-only", action="store_true", help="cross-validate using training data only (default)")
     mode.add_argument("--final", action="store_true", help="freeze and evaluate on test data")
+    mode.add_argument("--explain", action="store_true", help="explain the selected logistic regression using training data")
     parser.add_argument("--force-reeval", action="store_true")
     args = parser.parse_args()
     if args.force_reeval and not args.final:
         parser.error("--force-reeval requires --final")
     if args.final:
         final(args.force_reeval)
+    elif args.explain:
+        explain()
     else:
         cv_only()
