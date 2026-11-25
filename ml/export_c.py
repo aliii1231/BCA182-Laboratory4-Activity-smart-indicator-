@@ -19,7 +19,10 @@ REPORT_PATH = OUT / "export_report.md"
 
 
 def c_float(value):
-    return f"{float(value):.9g}f"
+    formatted = f"{float(value):.9g}"
+    if "." not in formatted and "e" not in formatted.lower():
+        formatted += ".0"
+    return f"{formatted}f"
 
 
 def array_1d(name, values):
