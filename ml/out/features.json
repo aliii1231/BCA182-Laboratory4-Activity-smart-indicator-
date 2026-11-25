@@ -1,0 +1,30 @@
+{
+  "features": [
+    "amb_mean",
+    "amb_max",
+    "amb_std",
+    "prox_mean",
+    "prox_max",
+    "prox_min",
+    "prox_std",
+    "temp_mean",
+    "rh_mean",
+    "temp_delta",
+    "rh_delta"
+  ],
+  "window_length": 10,
+  "sampling_hz": 1,
+  "definitions": {
+    "amb_mean": "Mean ambient light reading across the window.",
+    "amb_max": "Maximum ambient light reading across the window.",
+    "amb_std": "Population standard deviation of ambient light readings across the window.",
+    "prox_mean": "Mean proximity reading across the window.",
+    "prox_max": "Maximum proximity reading across the window.",
+    "prox_min": "Minimum proximity reading across the window.",
+    "prox_std": "Population standard deviation of proximity readings across the window.",
+    "temp_mean": "Mean temperature in degrees Celsius across the window.",
+    "rh_mean": "Mean relative humidity percentage across the window.",
+    "temp_delta": "Last minus first temperature in degrees Celsius within the window.",
+    "rh_delta": "Last minus first relative humidity percentage within the window."
+  }
+}
