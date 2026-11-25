@@ -1,6 +1,7 @@
 #include "app.h"
 #include "board_pins.h"
 #include "board_out.h"
+#include "model.h"
 #include "led_matrix.h"
 #include "lcd_st7789.h"
 #include "FreeRTOS.h"
@@ -196,7 +197,7 @@ static void UITask(void *arg)
 static void ConsoleTask(void *arg)
 {
     (void)arg; uint8_t ch; char line[40]; unsigned used=0;
-    App_Printf("COMMANDS: d=diagnostic, l=<session>,<label 0-3> logger, x=stop logger\r\n");
+    App_Printf("COMMANDS: d=diagnostic, l=<session>,<label 0-3> logger, x=stop logger, m=model self-test\r\n");
     for(;;){
       if(xStreamBufferReceive(uart_rx_stream,&ch,1,portMAX_DELAY)==1){
         if(ch=='\r'||ch=='\n'){
@@ -210,6 +211,7 @@ static void ConsoleTask(void *arg)
           } else if(line[0]=='t'&&line[1]=='='){if(rtc_ready&&rtc_set_from_text(line+2))App_Printf("RTC,set=ok\r\n");else App_Printf("RTC,set=error\r\n");}
           else if(line[0]=='d'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,diagnostic\r\n");}
           else if(line[0]=='x'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,stopped\r\n");}
+          else if(line[0]=='m'&&line[1]=='\0'){model_selftest();}
           used=0;
         } else if(used<sizeof(line)-1) line[used++]=(char)ch;
       }
@@ -233,7 +235,7 @@ int main(void)
     uart_rx_stream=xStreamBufferCreate(128,1);
     HAL_NVIC_SetPriority(USART1_IRQn,configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY,0);
     HAL_NVIC_EnableIRQ(USART1_IRQn);
-    if(uart_mutex==NULL || uart_rx_stream==NULL || HAL_UART_Receive_IT(&huart1,&uart_rx_byte,1)!=HAL_OK || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",384,NULL,2,NULL)!=pdPASS) Error_Handler();
+    if(uart_mutex==NULL || uart_rx_stream==NULL || HAL_UART_Receive_IT(&huart1,&uart_rx_byte,1)!=HAL_OK || xTaskCreate(SensorTask,"sensor",512,NULL,3,NULL)!=pdPASS || xTaskCreate(UITask,"ui",384,NULL,2,NULL)!=pdPASS || xTaskCreate(ConsoleTask,"console",512,NULL,2,NULL)!=pdPASS) Error_Handler();
     vTaskStartScheduler(); Error_Handler();
 }
 
