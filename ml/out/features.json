@@ -10,7 +10,9 @@
     "temp_mean",
     "rh_mean",
     "temp_delta",
-    "rh_delta"
+    "rh_delta",
+    "temp_rel",
+    "rh_rel"
   ],
   "window_length": 10,
   "sampling_hz": 1,
@@ -26,5 +28,14 @@
     "rh_mean": "Mean relative humidity percentage across the window.",
     "temp_delta": "Last minus first temperature in degrees Celsius within the window.",
     "rh_delta": "Last minus first relative humidity percentage within the window."
+  },
+  "relative_features": {
+    "features": [
+      "temp_rel",
+      "rh_rel"
+    ],
+    "baseline": "Mean temp_c and rh_pct of the nearest-in-time other State 0 session in the same split, using data/manifest.csv start times.",
+    "max_gap_minutes": 180,
+    "missing_baseline": "NaN when no other State 0 session has a manifest time within the maximum gap."
   }
 }

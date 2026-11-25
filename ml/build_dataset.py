@@ -16,6 +16,8 @@ FEATURES = [
     "amb_mean", "amb_max", "amb_std", "prox_mean", "prox_max", "prox_min",
     "prox_std", "temp_mean", "rh_mean", "temp_delta", "rh_delta",
 ]
+RELATIVE_FEATURES = ["temp_rel", "rh_rel"]
+MAX_GAP_MIN = 180
 DESCRIPTIONS = {
     "amb_mean": "Mean ambient light reading across the window.",
     "amb_max": "Maximum ambient light reading across the window.",
@@ -29,7 +31,8 @@ DESCRIPTIONS = {
     "temp_delta": "Last minus first temperature in degrees Celsius within the window.",
     "rh_delta": "Last minus first relative humidity percentage within the window.",
 }
-OUTPUT_COLUMNS = ["session_id", "split", "window", "label", *FEATURES]
+OUTPUT_COLUMNS = ["session_id", "split", "window", "label", *FEATURES,
+                  *RELATIVE_FEATURES]
 
 
 def features(rows):
@@ -65,17 +68,35 @@ def main():
             exclusions = q.load_exclusions(normalized_path)
         finally:
             os.unlink(normalized_path)
+    times = q.manifest_times()
     records = {"train": [], "test": []}
     counts = {"train": {}, "test": {}}
+    relative_counts = {"train": {}, "test": {}}
     session_lines = []
     excluded_lines = []
     reported_exclusions = set()
+    source_sessions = {}
+    baselines = {"train": [], "test": []}
     for split in ("train", "test"):
-        for path in sorted(glob.glob(os.path.join("data", "raw", f"{split}_*.csv"))):
+        paths = sorted(glob.glob(os.path.join("data", "raw", f"{split}_*.csv")))
+        for path in paths:
             rows = q.load(path)
             if not rows:
                 continue
             name = os.path.basename(path)[:-4]
+            source_sessions[name] = rows
+            if rows[0]["label"] == "0" and name in times:
+                valid = q.valid(rows)
+                if valid:
+                    baselines[split].append((name, times[name],
+                                             float(np.mean([float(r["temp_c"]) for r in valid], dtype=np.float64)),
+                                             float(np.mean([float(r["rh_pct"]) for r in valid], dtype=np.float64))))
+    for split in ("train", "test"):
+        for path in sorted(glob.glob(os.path.join("data", "raw", f"{split}_*.csv"))):
+            name = os.path.basename(path)[:-4]
+            rows = source_sessions.get(name, [])
+            if not rows:
+                continue
             excluded = exclusions.get(name, {"all": None, "wins": {}})
             valid = q.valid(rows)
             total_windows = len(valid) // q.WIN
@@ -94,10 +115,22 @@ def main():
                 if number in excluded["wins"]:
                     continue
                 window_rows = valid[(number - 1) * q.WIN:number * q.WIN]
+                candidates = [(abs((when - times[name]).total_seconds()), base_temp, base_rh)
+                              for base_name, when, base_temp, base_rh in baselines[split]
+                              if base_name != name and name in times]
+                nearest = min(candidates, key=lambda item: item[0]) if candidates else None
+                if nearest is not None and nearest[0] <= MAX_GAP_MIN * 60:
+                    temp_rel = float(np.mean([float(r["temp_c"]) for r in window_rows], dtype=np.float64)) - nearest[1]
+                    rh_rel = float(np.mean([float(r["rh_pct"]) for r in window_rows], dtype=np.float64)) - nearest[2]
+                else:
+                    temp_rel = rh_rel = float("nan")
                 record = {"session_id": name, "split": split, "window": number,
-                          "label": label, **features(window_rows)}
+                          "label": label, **features(window_rows),
+                          "temp_rel": temp_rel, "rh_rel": rh_rel}
                 records[split].append(record)
                 counts[split][label] = counts[split].get(label, 0) + 1
+                if not np.isnan(temp_rel) and not np.isnan(rh_rel):
+                    relative_counts[split][label] = relative_counts[split].get(label, 0) + 1
                 built += 1
             session_lines.append(
                 f"{name}: windows built={built}, windows excluded={len(excluded_numbers)}")
@@ -114,8 +147,14 @@ def main():
         pd.DataFrame(records[split], columns=OUTPUT_COLUMNS).to_csv(
             f"ml/out/{split}_windows.csv", index=False)
     with open("ml/out/features.json", "w", encoding="utf-8") as f:
-        json.dump({"features": FEATURES, "window_length": q.WIN, "sampling_hz": 1,
-                   "definitions": DESCRIPTIONS}, f, indent=2)
+        json.dump({"features": [*FEATURES, *RELATIVE_FEATURES], "window_length": q.WIN,
+                   "sampling_hz": 1, "definitions": DESCRIPTIONS,
+                   "relative_features": {
+                       "features": RELATIVE_FEATURES,
+                       "baseline": "Mean temp_c and rh_pct of the nearest-in-time other State 0 session in the same split, using data/manifest.csv start times.",
+                       "max_gap_minutes": MAX_GAP_MIN,
+                       "missing_baseline": "NaN when no other State 0 session has a manifest time within the maximum gap."
+                   }}, f, indent=2)
         f.write("\n")
 
     report = ["# Dataset build report", "", "## Per session", "", *session_lines,
@@ -131,6 +170,11 @@ def main():
             report.append(f"| {split} | {state} | {count} |")
             if count < minimum:
                 errors.append(f"{split} State {state} has {count} windows; requires {minimum}")
+    report.extend(["", "## Windows with relative baseline", "",
+                   "| Split | State | Windows with baseline |", "|---|---:|---:|"])
+    for split in ("train", "test"):
+        for state in (0, 1, 2):
+            report.append(f"| {split} | {state} | {relative_counts[split].get(state, 0)} |")
     report_text = "\n".join(report) + "\n"
     print(report_text, end="")
     with open("ml/out/dataset_report.md", "w", encoding="utf-8") as f:

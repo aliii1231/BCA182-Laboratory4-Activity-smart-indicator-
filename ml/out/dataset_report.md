@@ -43,3 +43,14 @@ train_s2_4 all: humidity 80.5-80.9 % is below the fresh State 0 baseline; risk c
 | test | 0 | 12 |
 | test | 1 | 12 |
 | test | 2 | 12 |
+
+## Windows with relative baseline
+
+| Split | State | Windows with baseline |
+|---|---:|---:|
+| train | 0 | 18 |
+| train | 1 | 35 |
+| train | 2 | 31 |
+| test | 0 | 12 |
+| test | 1 | 12 |
+| test | 2 | 12 |
