@@ -1,3 +1,4 @@
+
 session_id,window,reason
 train_s1_2,w2,"no lid opening or hand in window"
 train_s2_2,w1,"humidity condition not yet reached (+1.2 %)"

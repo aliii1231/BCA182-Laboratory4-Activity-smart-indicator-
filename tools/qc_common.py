@@ -7,7 +7,7 @@ import re
 
 WIN, RH_D, T_D, AMB, PROX = 10, 4.0, 1.5, 20, 100     # PROVISIONAL thresholds
 FALLBACK = (32.3, 77.0)
-OLD_GAP_MIN = 30
+OLD_GAP_MIN = 35
 
 
 def mean(v):

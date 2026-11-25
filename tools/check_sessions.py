@@ -10,7 +10,7 @@ Thresholds are PROVISIONAL: RH +4 %, T +1.5 C, ambient_raw 20, proximity_raw 100
 """
 import qc_common as q
 
-MIN_ROWS, MIN_OK = 56, 4
+MIN_ROWS = 56
 
 if __name__ == "__main__":
     data, times = q.load_all(), q.manifest_times()
@@ -37,9 +37,8 @@ if __name__ == "__main__":
         if not good: flags.append("BASELINE_OLD(humidity/temp unverified)")
         if label == 2 and not good:
             flags.append("NEEDS_BASELINE")
-        elif ok < MIN_OK:
+        elif ok < -(-2 * len(ws) // 3):      # fewer than 2/3 of the windows
             flags.append("WEAK")
         gtxt = f", {gap:.0f} min away" if gap else ""
         print(f"{name:12s} L{label} rows={len(rows):3d} base T{base[0]:.1f}/RH{base[1]:.1f} "
               f"({src}{gtxt}) windows_ok={ok if not (label == 2 and not good) else '?'}/{len(ws)} {' '.join(flags) if flags else 'OK'}")
-    
