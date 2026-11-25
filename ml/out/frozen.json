@@ -1,0 +1,36 @@
+{
+  "features": [
+    "amb_mean",
+    "amb_max",
+    "amb_std",
+    "prox_mean",
+    "prox_max",
+    "prox_min",
+    "prox_std",
+    "temp_mean",
+    "rh_mean",
+    "temp_delta",
+    "rh_delta"
+  ],
+  "selected_model": {
+    "family": "logistic",
+    "hyperparameters": {
+      "C": 0.03,
+      "max_iter": 2000
+    }
+  },
+  "best_tree": {
+    "max_depth": 2,
+    "min_samples_leaf": 1
+  },
+  "rule_thresholds": {
+    "RH_T": 85.0,
+    "T_T": 33.0,
+    "AMB_T": 15.0,
+    "PROX_T": 60.0
+  },
+  "git_commit": "8621109ad4bb7e4df47223ff6e14c9e56e12b4a5",
+  "timestamp_utc": "2026-11-25T12:22:55.822394+00:00",
+  "sklearn_version": "1.9.1",
+  "numpy_version": "2.5.5"
+}
