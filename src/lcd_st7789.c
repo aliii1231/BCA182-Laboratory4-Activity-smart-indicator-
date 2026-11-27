@@ -5,6 +5,7 @@
 #include "task.h"
 #include "board_pins.h"
 #include "lcd_st7789.h"
+#include "product.h"
 #include <stdio.h>
 
 #define LCD_CMD (*((volatile uint8_t *)0x68000000U))
@@ -70,10 +71,12 @@ static const uint8_t font[96][5]={
  ['M'-32]={0x7F,2,0x0C,2,0x7F}, ['N'-32]={0x7F,4,8,0x10,0x7F}, ['O'-32]={0x3E,0x41,0x41,0x41,0x3E},
  ['P'-32]={0x7F,9,9,9,6}, ['R'-32]={0x7F,9,0x19,0x29,0x46}, ['S'-32]={0x46,0x49,0x49,0x49,0x31},
  ['T'-32]={1,1,0x7F,1,1}, ['U'-32]={0x3F,0x40,0x40,0x40,0x3F}, ['Y'-32]={3,4,0x78,4,3},
+ ['K'-32]={0x7F,8,0x14,0x22,0x41}, ['V'-32]={0x1F,0x20,0x40,0x20,0x1F}, ['W'-32]={0x3F,0x40,0x38,0x40,0x3F}, ['X'-32]={0x63,0x14,8,0x14,0x63},
  ['a'-32]={0x20,0x54,0x54,0x54,0x78}, ['b'-32]={0x7F,0x48,0x44,0x44,0x38}, ['c'-32]={0x38,0x44,0x44,0x44,0x20},
  ['e'-32]={0x38,0x54,0x54,0x54,0x18}, ['h'-32]={0x7F,8,4,4,0x78}, ['i'-32]={0,0x44,0x7D,0x40,0},
  ['m'-32]={0x7C,4,0x18,4,0x78}, ['n'-32]={0x7C,8,4,4,0x78}, ['o'-32]={0x38,0x44,0x44,0x44,0x38},
- ['r'-32]={0x7C,8,4,4,8}, ['s'-32]={0x48,0x54,0x54,0x54,0x20}, ['t'-32]={4,0x3F,0x44,0x40,0x20}, ['u'-32]={0x3C,0x40,0x40,0x20,0x7C}
+ ['r'-32]={0x7C,8,4,4,8}, ['s'-32]={0x48,0x54,0x54,0x54,0x20}, ['t'-32]={4,0x3F,0x44,0x40,0x20}, ['u'-32]={0x3C,0x40,0x40,0x20,0x7C},
+ ['-'-32]={8,8,8,8,8}, ['.'-32]={0,0x60,0x60,0,0}, ['%'-32]={0x63,0x13,8,0x64,0x63}, ['/'-32]={0x20,0x10,8,4,2}, [':'-32]={0,0x36,0x36,0,0}
 };
 
 void lcd_draw_string(uint16_t x,uint16_t y,const char *str,uint16_t fg,uint16_t bg)
@@ -96,7 +99,7 @@ void lcd_status(uint8_t state,int32_t temp_cx100,int32_t rh_cx100,uint16_t ambie
 
 void lcd_test(void)
 {
-    lcd_fill(0xF800);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x07E0);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x001F);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0);lcd_draw_string(4,4,"LCD TEST",0xFFFF,0);
+    lcd_fill(0x4000);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x0200);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0x0010);vTaskDelay(pdMS_TO_TICKS(50));lcd_fill(0);lcd_draw_string(4,4,"LCD TEST",0x7BEF,0);
 }
 
 void lcd_show_idle(void)
@@ -113,4 +116,47 @@ void lcd_show_recording(const char *session,uint8_t label)
     lcd_draw_string(4,4,line,0x7BEF,0x0000);
     snprintf(line,sizeof line,"LABEL %u",(unsigned)label);
     lcd_draw_string(4,20,line,0x7BEF,0x0000);
+}
+
+static const char *state_name(const product_status_t *s)
+{
+    if(s->sensor_fault)return "SENSOR ERROR";
+    switch(s->shown_class){case 0:return "SAFE";case 1:return "OPEN";case 2:return "RISK";default:return "WAIT";}
+}
+
+static void format_centi(char *out,size_t n,const char *prefix,float value,const char *suffix)
+{
+    int32_t v=(int32_t)(value*100.0f+(value>=0.0f?0.5f:-0.5f));
+    uint32_t m=(v<0)?(uint32_t)(-v):(uint32_t)v;
+    snprintf(out,n,"%s%s%lu.%02lu%s",prefix,v<0?"-":"",(unsigned long)(m/100U),(unsigned long)(m%100U),suffix);
+}
+
+void lcd_show_product(const product_status_t *s)
+{
+    if(s==NULL)return;
+    char line[32];uint16_t state_color=s->sensor_fault?0xA220U:(s->shown_class==2U?0x7800U:(s->shown_class==1U?0x03FFU:0x03E0U));
+    lcd_draw_string(4,4,state_name(s),state_color,0x0000);
+    if((s->latest_sample.valid_mask&1U)!=0U)format_centi(line,sizeof line,"TEMP ",s->latest_sample.temperature_c,"C");else snprintf(line,sizeof line,"TEMP NA");
+    lcd_draw_string(4,28,line,0x7BEF,0x0000);
+    if((s->latest_sample.valid_mask&1U)!=0U)format_centi(line,sizeof line,"RH ",s->latest_sample.humidity_pct,"%%");else snprintf(line,sizeof line,"RH NA");
+    lcd_draw_string(4,48,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"AMB %u",(unsigned)s->latest_sample.ambient_raw);lcd_draw_string(4,68,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"PROX %u",(unsigned)s->latest_sample.proximity_raw);lcd_draw_string(4,88,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"WINDOW %u/10",(unsigned)s->window_fill);lcd_draw_string(4,108,line,0x7BEF,0x0000);
+}
+
+void lcd_show_diagnostics(const product_status_t *s)
+{
+    if(s==NULL)return;
+    char line[32];lcd_draw_string(4,4,"DIAGNOSTICS",0x7BEF,0x0000);
+    if((s->latest_sample.valid_mask&1U)!=0U)format_centi(line,sizeof line,"TEMP ",s->latest_sample.temperature_c,"C");else snprintf(line,sizeof line,"TEMP NA");
+    lcd_draw_string(4,28,line,0x7BEF,0x0000);
+    if((s->latest_sample.valid_mask&1U)!=0U)format_centi(line,sizeof line,"RH ",s->latest_sample.humidity_pct,"%%");else snprintf(line,sizeof line,"RH NA");
+    lcd_draw_string(4,48,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"AMB %u PROX %u",(unsigned)s->latest_sample.ambient_raw,(unsigned)s->latest_sample.proximity_raw);lcd_draw_string(4,68,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"IMU %s",s->imu_ok?"OK":"ERR");lcd_draw_string(4,88,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"RTC %s",s->rtc_ok?"OK":"ERR");lcd_draw_string(4,108,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"FLASH %s",s->flash_ok?"OK":"ERR");lcd_draw_string(4,128,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"SD %s",s->sd_ok?"OK":(s->sd_present?"ERR":"NA"));lcd_draw_string(4,148,line,0x7BEF,0x0000);
+    snprintf(line,sizeof line,"WINDOW %u/10",(unsigned)s->window_fill);lcd_draw_string(4,168,line,0x7BEF,0x0000);
 }

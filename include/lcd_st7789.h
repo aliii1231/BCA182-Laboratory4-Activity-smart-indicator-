@@ -1,6 +1,7 @@
 #ifndef LCD_ST7789_H
 #define LCD_ST7789_H
 #include <stdint.h>
+struct product_status_t;
 int lcd_init(void);
 void lcd_fill(uint16_t rgb565);
 void lcd_draw_string(uint16_t x,uint16_t y,const char *str,uint16_t fg,uint16_t bg);
@@ -8,4 +9,6 @@ void lcd_status(uint8_t state,int32_t temp_cx100,int32_t rh_cx100,uint16_t ambie
 void lcd_test(void);
 void lcd_show_recording(const char *session,uint8_t label);
 void lcd_show_idle(void);
+void lcd_show_product(const struct product_status_t *status);
+void lcd_show_diagnostics(const struct product_status_t *status);
 #endif

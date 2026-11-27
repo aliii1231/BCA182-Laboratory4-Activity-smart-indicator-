@@ -60,7 +60,7 @@ void Board_SelfTest(void)
     App_Printf("SELFTEST,tick_ms=%lu,step=beep\r\n",(unsigned long)HAL_GetTick());
     buzzer_tone(1); vTaskDelay(pdMS_TO_TICKS(20)); buzzer_tone(0);
     App_Printf("SELFTEST,tick_ms=%lu,step=matrix\r\n",(unsigned long)HAL_GetTick());
-    matrix_test();
+    matrix_set_enabled(1); matrix_test(); matrix_set_enabled(0);
     App_Printf("SELFTEST,tick_ms=%lu,step=lcd\r\n",(unsigned long)HAL_GetTick());
     lcd_test();
     if(data_logger_mode) lcd_show_recording(log_session,log_label); else lcd_show_idle();

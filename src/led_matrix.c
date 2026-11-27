@@ -4,7 +4,7 @@
 #include "board_pins.h"
 #include "led_matrix.h"
 
-#define MAX_BRIGHTNESS 32U
+#define MAX_BRIGHTNESS 8U
 #define CYCLES_PER_US 168U
 static uint8_t frame[MATRIX_LED_COUNT][3]; /* RGB logical order */
 
@@ -36,10 +36,15 @@ void matrix_init(void)
     gpio.Pin=MATRIX_ENABLE_PIN; gpio.Mode=GPIO_MODE_OUTPUT_PP; gpio.Speed=GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(MATRIX_ENABLE_PORT,&gpio);
     HAL_GPIO_WritePin(MATRIX_DATA_PORT,MATRIX_DATA_PIN,GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(MATRIX_ENABLE_PORT,MATRIX_ENABLE_PIN,GPIO_PIN_RESET); /* active-low /OE */
+    HAL_GPIO_WritePin(MATRIX_ENABLE_PORT,MATRIX_ENABLE_PIN,GPIO_PIN_SET); /* active-low /OE, disabled */
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT=0U; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     matrix_clear();
+}
+
+void matrix_set_enabled(uint8_t enabled)
+{
+    HAL_GPIO_WritePin(MATRIX_ENABLE_PORT,MATRIX_ENABLE_PIN,enabled?GPIO_PIN_RESET:GPIO_PIN_SET);
 }
 
 void matrix_clear(void)
