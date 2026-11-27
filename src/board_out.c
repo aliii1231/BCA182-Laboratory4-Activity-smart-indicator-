@@ -9,6 +9,41 @@ extern volatile uint8_t data_logger_mode;
 extern volatile uint8_t log_label;
 extern char log_session[24];
 static TIM_HandleTypeDef htim3;
+static uint8_t buzzer_gpio_mode;
+
+static void buzzer_gpio_set(uint8_t high)
+{
+    if (!buzzer_gpio_mode) {
+        HAL_TIM_PWM_Stop(&htim3,TIM_CHANNEL_3);
+        HAL_GPIO_DeInit(BUZZER_PORT,BUZZER_PIN);
+        GPIO_InitTypeDef gpio={0}; gpio.Pin=BUZZER_PIN;gpio.Mode=GPIO_MODE_OUTPUT_PP;
+        gpio.Pull=GPIO_NOPULL;gpio.Speed=GPIO_SPEED_FREQ_LOW;HAL_GPIO_Init(BUZZER_PORT,&gpio);
+        buzzer_gpio_mode=1;
+    }
+    HAL_GPIO_WritePin(BUZZER_PORT,BUZZER_PIN,high?GPIO_PIN_SET:GPIO_PIN_RESET);
+}
+
+static void buzzer_pwm_mode(void)
+{
+    if (buzzer_gpio_mode) {
+        HAL_GPIO_DeInit(BUZZER_PORT,BUZZER_PIN);
+        GPIO_InitTypeDef gpio={0};gpio.Pin=BUZZER_PIN;gpio.Mode=GPIO_MODE_AF_PP;
+        gpio.Pull=GPIO_NOPULL;gpio.Speed=GPIO_SPEED_FREQ_LOW;gpio.Alternate=GPIO_AF2_TIM3;
+        HAL_GPIO_Init(BUZZER_PORT,&gpio);
+        HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_3);
+        buzzer_gpio_mode=0;
+    }
+}
+
+static void buzzer_frequency(uint32_t hz)
+{
+    buzzer_pwm_mode();
+    uint32_t period=1000000U/hz-1U;
+    htim3.Init.Period=period;
+    __HAL_TIM_SET_AUTORELOAD(&htim3,period);
+    __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,(period+1U)/2U);
+    __HAL_TIM_SET_COUNTER(&htim3,0U);
+}
 
 void Board_Out_Init(void)
 {
@@ -41,7 +76,36 @@ void led_set(led_color_t color, uint8_t on)
 
 void buzzer_tone(uint8_t on)
 {
-    __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,on?185U:0U);
+    buzzer_pwm_mode();
+    __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,on?(__HAL_TIM_GET_AUTORELOAD(&htim3)+1U)/2U:0U);
+}
+
+void buzzer_alarm_tone(uint8_t on)
+{
+#if BUZZER_MODE_DC
+    buzzer_gpio_set(on);
+#else
+    buzzer_tone(on);
+#endif
+}
+
+void buzzer_test_sequence(void)
+{
+    App_Printf("BUZZ,mode=dc\r\n");
+    buzzer_gpio_set(1);vTaskDelay(pdMS_TO_TICKS(400));buzzer_gpio_set(0);
+    vTaskDelay(pdMS_TO_TICKS(300));
+    const uint32_t frequencies[3]={2000U,2700U,4000U};
+    const char *labels[3]={"pwm2000","pwm2700","pwm4000"};
+    for(unsigned i=0;i<3U;++i){
+        buzzer_frequency(frequencies[i]);
+        App_Printf("BUZZ,mode=%s\r\n",labels[i]);
+        __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,(__HAL_TIM_GET_AUTORELOAD(&htim3)+1U)/2U);
+        vTaskDelay(pdMS_TO_TICKS(400));
+        __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,0U);
+        if(i<2U)vTaskDelay(pdMS_TO_TICKS(300));
+    }
+    buzzer_frequency(2700U);
+    __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,0U);
 }
 
 void buzzer_beep(uint32_t ms)

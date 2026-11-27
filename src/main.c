@@ -135,6 +135,15 @@ void App_Printf(const char *format,...)
     if(lock && uart_mutex) xSemaphoreGive(uart_mutex);
 }
 
+static void App_PrintRaw(const char *data, size_t length)
+{
+    if (data == NULL || length == 0U) return;
+    BaseType_t lock=(xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED && uart_mutex!=NULL);
+    if(lock)xSemaphoreTake(uart_mutex,portMAX_DELAY);
+    (void)HAL_UART_Transmit(&huart1,(uint8_t *)data,(uint16_t)length,1000U);
+    if(lock)xSemaphoreGive(uart_mutex);
+}
+
 static uint8_t buttons(void)
 {
     uint8_t b=0;
@@ -208,6 +217,7 @@ static void UITask(void *arg)
 {
     (void)arg; uint8_t page=0, acknowledged=0;
     uint8_t candidate=0, candidate_count=0, stable=0, screen_valid=0, blink_on=0, beep_active=0;
+    uint8_t latency_state=PRODUCT_UNKNOWN_CLASS, latency_state_initialized=0;
     uint32_t last_draw=0, last_blink=0, last_beep=0, beep_start=0;
     product_status_t previous={0}, current={0};
     for(;;){
@@ -231,21 +241,32 @@ static void UITask(void *arg)
             Product_GetStatus(&current);
             uint32_t now=HAL_GetTick();
             if(!screen_valid || product_view_changed(&current,&previous,page) || (uint32_t)(now-last_draw)>=2000U){
+                uint8_t visible_state=current.sensor_fault?PRODUCT_SENSOR_ERROR_STATE:current.shown_class;
                 if(!screen_valid)lcd_fill(0x0000);
                 if(page==0)lcd_show_product(&current);else lcd_show_diagnostics(&current);
                 previous=current;last_draw=now;screen_valid=1;
+                uint32_t ui_tick=xTaskGetTickCount();
+                if(!latency_state_initialized){latency_state=visible_state;latency_state_initialized=1;}
+                else if(visible_state!=latency_state){
+                    latency_state=visible_state;
+                    Product_SetUiTick(current.sample_tick,ui_tick);
+                    App_Printf("LAT,tick_ms=%lu,shown=%u,sample_to_pred_ms=%lu,sample_to_lcd_ms=%lu\r\n",
+                      (unsigned long)current.sample_tick,(unsigned)visible_state,
+                      (unsigned long)(current.pred_done_tick-current.sample_tick),
+                      (unsigned long)(ui_tick-current.sample_tick));
+                }
             }
             if(current.sensor_fault){
                 if((uint32_t)(now-last_blink)>=500U){blink_on=(uint8_t)!blink_on;last_blink=now;}
-                led_set(LED_COLOR_BLUE,blink_on);led_set(LED_COLOR_RED,blink_on);beep_active=0;buzzer_tone(0);
+                led_set(LED_COLOR_BLUE,blink_on);led_set(LED_COLOR_RED,blink_on);beep_active=0;buzzer_alarm_tone(0);
             }else{
                 led_set(LED_COLOR_BLUE,current.shown_class==1U);
                 led_set(LED_COLOR_RED,current.shown_class==2U);
-                if(current.shown_class!=2U){acknowledged=0;beep_active=0;buzzer_tone(0);}
-                else if(acknowledged || alarm_muted){beep_active=0;buzzer_tone(0);}
-                else if(beep_active && (uint32_t)(now-beep_start)>=200U){beep_active=0;buzzer_tone(0);}
+                if(current.shown_class!=2U){acknowledged=0;beep_active=0;buzzer_alarm_tone(0);}
+                else if(acknowledged || alarm_muted){beep_active=0;buzzer_alarm_tone(0);}
+                else if(beep_active && (uint32_t)(now-beep_start)>=300U){beep_active=0;buzzer_alarm_tone(0);}
                 else if(!beep_active && (uint32_t)(now-last_beep)>=5000U){
-                    beep_start=now;last_beep=now;beep_active=1;buzzer_tone(1);
+                    beep_start=now;last_beep=now;beep_active=1;buzzer_alarm_tone(1);
                 }
             }
         }else{
@@ -258,6 +279,7 @@ static void UITask(void *arg)
 static void ConsoleTask(void *arg)
 {
     (void)arg; uint8_t ch; char line[40]; unsigned used=0; TickType_t last_report=xTaskGetTickCount();
+    static char task_table[512];
     App_Printf("COMMANDS: d=diagnostic, l=<session>,<label 0-3> logger, x=stop logger, m=model self-test, q=mute toggle\r\n");
     for(;;){
       if(xStreamBufferReceive(uart_rx_stream,&ch,1,pdMS_TO_TICKS(100))==1){
@@ -271,6 +293,16 @@ static void ConsoleTask(void *arg)
             } else App_Printf("ERROR,expected_l=session,label\r\n");
           } else if(line[0]=='t'&&line[1]=='='){if(rtc_ready&&rtc_set_from_text(line+2))App_Printf("RTC,set=ok\r\n");else App_Printf("RTC,set=error\r\n");}
           else if(line[0]=='q'&&line[1]=='\0'){alarm_muted=(uint8_t)!alarm_muted;App_Printf("UI,tick_ms=%lu,mute=%u\r\n",(unsigned long)HAL_GetTick(),(unsigned)alarm_muted);}
+          else if(line[0]=='b'&&line[1]=='\0'){if(!data_logger_mode)buzzer_test_sequence();}
+          else if(line[0]=='f'&&line[1]=='\0'){
+            if(!data_logger_mode){Product_StartFaultInjection(15000U);App_Printf("FAULTINJECT,start_tick_ms=%lu\r\n",(unsigned long)HAL_GetTick());}
+          }
+          else if(line[0]=='t'&&line[1]=='\0'){
+            App_Printf("TASKS,name state prio stack_hw number\r\n");
+            vTaskListTasks(task_table,sizeof(task_table));
+            App_PrintRaw(task_table,strlen(task_table));
+            App_Printf("TASKS,end\r\n");
+          }
           else if(line[0]=='d'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,diagnostic\r\n");}
           else if(line[0]=='x'){data_logger_mode=0;lcd_show_idle();App_Printf("MODE,stopped\r\n");}
           else if(line[0]=='m'&&line[1]=='\0'){model_selftest();}

@@ -13,6 +13,8 @@ static SemaphoreHandle_t diagnostics_mutex;
 static product_status_t status;
 static product_status_t diagnostics;
 static uint32_t dropped_samples;
+static volatile uint8_t fault_injection_active;
+static volatile TickType_t fault_injection_deadline;
 
 void Product_Init(void)
 {
@@ -42,6 +44,22 @@ uint32_t Product_GetDropCount(void)
     count = dropped_samples;
     taskEXIT_CRITICAL();
     return count;
+}
+
+void Product_SetUiTick(uint32_t sample_tick, uint32_t ui_tick)
+{
+    if (status_mutex == NULL) return;
+    xSemaphoreTake(status_mutex, portMAX_DELAY);
+    if (status.sample_tick == sample_tick) status.ui_tick = ui_tick;
+    xSemaphoreGive(status_mutex);
+}
+
+void Product_StartFaultInjection(uint32_t duration_ms)
+{
+    taskENTER_CRITICAL();
+    fault_injection_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(duration_ms);
+    fault_injection_active = 1;
+    taskEXIT_CRITICAL();
 }
 
 void Product_GetStatus(product_status_t *out)
@@ -113,6 +131,17 @@ void Product_InferTask(void *arg)
         if (xQueueReceive(sampleQ, &sample, portMAX_DELAY) != pdPASS) continue;
         uint8_t predict = 0;
         uint8_t predicted = PRODUCT_UNKNOWN_CLASS;
+        TickType_t infer_tick = xTaskGetTickCount();
+        uint32_t sample_age_ms=(uint32_t)(HAL_GetTick()-sample.tick_ms);
+        uint32_t sample_rtos_tick=(uint32_t)(infer_tick-sample_age_ms);
+        uint8_t injected = 0;
+        if (fault_injection_active) {
+            if ((int32_t)(infer_tick - fault_injection_deadline) >= 0) {
+                taskENTER_CRITICAL(); fault_injection_active = 0; taskEXIT_CRITICAL();
+                if (!data_logger_mode)
+                    App_Printf("FAULTINJECT,end_tick_ms=%lu\r\n", (unsigned long)HAL_GetTick());
+            } else injected = 1;
+        }
         if (data_logger_mode) {
             fill = next = consecutive = 0;
             previous_prediction = PRODUCT_UNKNOWN_CLASS;
@@ -120,6 +149,8 @@ void Product_InferTask(void *arg)
             fault_latched = 1;
             xSemaphoreTake(status_mutex, portMAX_DELAY);
             status.tick_ms = sample.tick_ms;
+            status.sample_tick = sample_rtos_tick;
+            status.pred_done_tick = infer_tick;
             status.latest_sample = sample;
             status.predicted_class = PRODUCT_UNKNOWN_CLASS;
             status.sensor_fault = fault_latched;
@@ -134,12 +165,14 @@ void Product_InferTask(void *arg)
                             (uint32_t)(sample.tick_ms - previous_tick) > 2500U);
         previous_tick = sample.tick_ms;
         have_previous_tick = 1;
-        if (!sample_valid(&sample) || bad_gap) {
+        if (!sample_valid(&sample) || bad_gap || injected) {
             fill = next = consecutive = 0;
             previous_prediction = PRODUCT_UNKNOWN_CLASS;
             fault_latched = 1;
             xSemaphoreTake(status_mutex, portMAX_DELAY);
             status.tick_ms = sample.tick_ms;
+            status.sample_tick = sample_rtos_tick;
+            status.pred_done_tick = xTaskGetTickCount();
             status.predicted_class = PRODUCT_UNKNOWN_CLASS;
             status.sensor_fault = 1;
             status.window_fill = 0;
@@ -176,6 +209,8 @@ void Product_InferTask(void *arg)
 
             xSemaphoreTake(status_mutex, portMAX_DELAY);
             status.tick_ms = sample.tick_ms;
+            status.sample_tick = sample_rtos_tick;
+            status.pred_done_tick = xTaskGetTickCount();
             status.latest_sample = sample;
             status.window_fill = fill;
             status.sensor_fault = fault_latched;
