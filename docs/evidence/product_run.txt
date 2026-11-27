@@ -1,0 +1,19 @@
+﻿Date: 2026-11-27 15:15:33 +08:00
+Commit: df33616 Add buzzer test, fault injection, latency and task table
+
+1. PRED lines (1 Hz, settled at rest):
+   PRED,tick_ms=14292,fill=10,pred=0,shown=0,s0=442,s1=322,s2=-764,feat_us=4,fault=0
+
+2. LCD & LEDs:
+   Dark background with dim text, readings and state update properly, LED matrix off.
+
+3. Alarm acknowledge (LEFT button during State 2):
+   BUTTON,tick_ms=371289,mask=4
+   UI,tick_ms=371291,ack=1
+   Note: State 2 buzzer sounded like a brief tap/click; acknowledge silenced it.
+
+4. PRODUCT lines (every 10 s, 6+ min uptime):
+   PRODUCT,tick_ms=371054,shown=2,fault=0,drops=0,stack_hw_sensor=111,stack_hw_infer=170,stack_hw_ui=278,stack_hw_console=276,heap_free=15312,heap_min=15312
+
+5. Live state change (cover + breath -> State 2 RISK):
+   PRED,tick_ms=370292,fill=10,pred=2,shown=2,s0=-959,s1=324,s2=635,feat_us=4,fault=0
