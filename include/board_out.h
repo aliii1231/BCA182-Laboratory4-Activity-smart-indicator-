@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifndef BUZZER_MODE_DC
-#define BUZZER_MODE_DC 0
-#endif
-
 typedef enum { LED_COLOR_RED=0, LED_COLOR_BLUE=1 } led_color_t;
 void Board_Out_Init(void);
 void led_set(led_color_t color, uint8_t on);

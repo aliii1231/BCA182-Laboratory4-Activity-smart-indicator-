@@ -132,8 +132,7 @@ void Product_InferTask(void *arg)
         uint8_t predict = 0;
         uint8_t predicted = PRODUCT_UNKNOWN_CLASS;
         TickType_t infer_tick = xTaskGetTickCount();
-        uint32_t sample_age_ms=(uint32_t)(HAL_GetTick()-sample.tick_ms);
-        uint32_t sample_rtos_tick=(uint32_t)(infer_tick-sample_age_ms);
+        uint32_t sample_rtos_tick=sample.task_tick;
         uint8_t injected = 0;
         if (fault_injection_active) {
             if ((int32_t)(infer_tick - fault_injection_deadline) >= 0) {

@@ -82,11 +82,13 @@ void buzzer_tone(uint8_t on)
 
 void buzzer_alarm_tone(uint8_t on)
 {
-#if BUZZER_MODE_DC
-    buzzer_gpio_set(on);
-#else
-    buzzer_tone(on);
-#endif
+    if (on) {
+        buzzer_frequency(4000U);
+        __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,(__HAL_TIM_GET_AUTORELOAD(&htim3)+1U)/2U);
+    } else {
+        buzzer_pwm_mode();
+        __HAL_TIM_SET_COMPARE(&htim3,TIM_CHANNEL_3,0U);
+    }
 }
 
 void buzzer_test_sequence(void)

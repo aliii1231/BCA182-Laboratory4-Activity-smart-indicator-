@@ -10,6 +10,7 @@ void Error_Handler(void);
 
 typedef struct {
     uint32_t tick_ms;
+    uint32_t task_tick;
     float temperature_c;
     float humidity_pct;
     uint16_t ambient_raw;

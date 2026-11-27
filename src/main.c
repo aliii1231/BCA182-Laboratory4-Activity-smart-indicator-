@@ -14,6 +14,10 @@
 #include "semphr.h"
 #include "stream_buffer.h"
 
+#ifndef GIT_COMMIT
+#define GIT_COMMIT "unknown"
+#endif
+
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
@@ -165,6 +169,7 @@ static void SensorTask(void *arg)
         else if (attempt<2) vTaskDelay(pdMS_TO_TICKS(100));
     }
     App_Printf("BOOT,RT-SPARK,STM32F407ZGT6,clock_hz=%lu\r\n",(unsigned long)HAL_RCC_GetHCLKFreq());
+    App_Printf("BUILD,commit=%s,date=%s %s\r\n",GIT_COMMIT,__DATE__,__TIME__);
     storage_diagnostics();
     App_Printf("DIAG,interval_ms=1000,cal_temp_c=0.0,cal_rh_pct=0.0\r\n");
     if(data_logger_mode) App_Printf("CSV,session_id,label,sequence,tick_ms,temp_c,rh_pct,ambient_raw,proximity_raw,valid_mask,buttons\r\n");
@@ -176,6 +181,7 @@ static void SensorTask(void *arg)
         if(aht_status==HAL_OK){fx(ts,sizeof ts,t,3);fx(hs,sizeof hs,h,3);}
         if(aht_status==HAL_OK){s.temperature_c=t;s.humidity_pct=h;s.valid_mask|=1;}
         if(AP3216C_Read(&a,&p)==HAL_OK){s.ambient_raw=a;s.proximity_raw=p;s.valid_mask|=2;}
+        s.task_tick=xTaskGetTickCount();
         HAL_StatusTypeDef icm=ICM20608_ReadWhoAmI(&w);
         imu_raw_t imu={0};
         HAL_StatusTypeDef imu_status=(imu_ok && ICM20608_ReadRaw(&imu)==HAL_OK)?HAL_OK:HAL_ERROR;
